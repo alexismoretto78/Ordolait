@@ -1,38 +1,40 @@
 "use client"
 
-import { useEffect } from "react"
-import { useDispatch, useSelector } from "react-redux"
-import { RootState } from "./lib/store"
-import { reset, step, toggleRunning } from "./lib/simulatorSlice"
+import Commande from "./components/commande"
+import Osmose from "./components/osmose"
+import Pasto from "./components/pasto"
+import Cuve from "./components/cuve"
+import Gantt from "./components/gantt"
 
 export default function Home() {
-  const dispatch = useDispatch()
-  const { time, running, value } = useSelector(
-    (state: RootState) => state.simulator
-  )
-
-  useEffect(() => {
-    if (!running) return
-    const interval = setInterval(() => {
-      dispatch(step(1))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [dispatch, running])
-
   return (
-    <main>
-      <h1>Optimisateur de fabrication de lait</h1>
-      <div>
-        <p>Temps : {time.toFixed(0)} s</p>
-        <p>Valeur : {value.toFixed(2)}</p>
-        <p>Simulation : {running ? "En cours" : "En pause"}</p>
-      </div>
-      <div>
-        <button onClick={() => dispatch(toggleRunning())}>
-          {running ? "Pause" : "Lancer"}
-        </button>
-        <button onClick={() => dispatch(reset())}>Réinitialiser</button>
-      </div>
+    <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+      <h1>Gestion de commande - Industrie laitière</h1>
+      <p>
+        Crée une commande client en nombre de pots, calcule la masse blanche requise,
+        concentre le lait par osmose, pasteurise, stocke en cuves et envoie la masse
+        blanche aux machines Atia et Grunwald.
+      </p>
+
+      <section style={{ marginTop: 24 }}>
+        <Commande />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <Osmose />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <Pasto />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <Cuve />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <Gantt />
+      </section>
     </main>
   )
 }

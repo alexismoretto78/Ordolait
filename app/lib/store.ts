@@ -1,9 +1,11 @@
 import { configureStore } from "@reduxjs/toolkit"
 import simulatorReducer from "./simulatorSlice"
+import orderReducer from "./orderSlice"
 
 export const store = configureStore({
   reducer: {
     simulator: simulatorReducer,
+    order: orderReducer,
   },
 })
 
