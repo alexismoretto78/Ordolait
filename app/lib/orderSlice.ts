@@ -41,6 +41,31 @@ const computeWhiteMass = (orderQty: number, gramPerPot: number) =>
 
 const TLS_CAPACITIES = [11000, 5200, 5200]
 
+const CF_TANKS = [
+  { name: "CF4", capacity: 550 },
+  { name: "CF5", capacity: 550 },
+  { name: "CF1", capacity: 1100 },
+  { name: "CF2", capacity: 1100 },
+  { name: "CF3", capacity: 1100 },
+  { name: "CF11", capacity: 2200 },
+  { name: "CF12", capacity: 2200 },
+  { name: "CF13", capacity: 2200 },
+  { name: "CF14", capacity: 2200 },
+  { name: "CF15", capacity: 2200 },
+  { name: "CF16", capacity: 2200 },
+  { name: "CF17", capacity: 2200 },
+]
+
+const selectCuveForVolume = (volume: number) => {
+  if (volume <= 0) return ""
+  const sorted = CF_TANKS.slice().sort((a, b) => {
+    if (a.capacity !== b.capacity) return a.capacity - b.capacity
+    return a.name.localeCompare(b.name)
+  })
+  const tank = sorted.find((tank) => volume <= tank.capacity)
+  return tank ? tank.name : ""
+}
+
 // calcule le volume de lait cru nécessaire pour obtenir un volume final
 // finalVolume (L) sachant la concentration initiale Ci et la
 // concentration finale Cf. Formule: V_initial = V_final * Cf / Ci
@@ -135,7 +160,8 @@ const orderSlice = createSlice({
         return
       }
       state.pasteurized = true
-      state.status = "pasto"
+      state.cuve = selectCuveForVolume(state.osmosedVolume)
+      state.status = state.cuve ? "cuve" : "pasto"
     },
     assignCuve(state, action: PayloadAction<string>) {
       state.cuve = action.payload
@@ -170,4 +196,5 @@ export const {
   resetOrder,
 } = orderSlice.actions
 
+export { CF_TANKS }
 export default orderSlice.reducer

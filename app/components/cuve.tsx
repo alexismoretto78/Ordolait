@@ -2,22 +2,7 @@
 
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { assignCuve, sendToMachine } from "../lib/orderSlice"
-
-const cuves = [
-  "CF1",
-  "CF2",
-  "CF3",
-  "CF4",
-  "CF5",
-  "CF11",
-  "CF12",
-  "CF13",
-  "CF14",
-  "CF15",
-  "CF16",
-  "CF17",
-]
+import { assignCuve, sendToMachine, CF_TANKS } from "../lib/orderSlice"
 
 export default function Cuve() {
   const dispatch = useDispatch()
@@ -37,9 +22,9 @@ export default function Cuve() {
             style={{ width: "100%", marginTop: 4 }}
           >
             <option value="">Sélectionner une cuve</option>
-            {cuves.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {CF_TANKS.map((tank) => (
+              <option key={tank.name} value={tank.name}>
+                {tank.name} ({tank.capacity} L)
               </option>
             ))}
           </select>
