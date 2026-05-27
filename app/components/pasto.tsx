@@ -2,7 +2,6 @@
 
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { performPasteurize } from "../lib/orderSlice"
 
 export default function Pasto() {
   const dispatch = useDispatch()
@@ -19,14 +18,9 @@ export default function Pasto() {
           <p>{osmosedVolume.toFixed(3)} L</p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => dispatch(performPasteurize())}
-          disabled={osmosedVolume <= 0}
-          style={{ width: 180, padding: 10, marginTop: 8 }}
-        >
-          Pasteuriser
-        </button>
+        <div>
+          <em>La pasteurisation est automatique une fois le volume calculé.</em>
+        </div>
 
         <div>
           <strong>Pasteurisé</strong>
