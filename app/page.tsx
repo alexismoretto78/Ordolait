@@ -1,5 +1,6 @@
 "use client"
 
+import TLC from "./components/tlc"
 import Commande from "./components/commande"
 import Osmose from "./components/osmose"
 import TLS from "./components/tls"
@@ -17,6 +18,10 @@ export default function Home() {
         concentre le lait par osmose, pasteurise, stocke en cuves et envoie la masse
         blanche aux machines Atia et Grunwald.
       </p>
+
+      <section style={{ marginTop: 24 }}>
+        <TLC />
+      </section>
 
       <section style={{ marginTop: 24 }}>
         <Commande />
