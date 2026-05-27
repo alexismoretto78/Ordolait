@@ -6,6 +6,7 @@ export type TimingInfo = {
   powderTime: number // minutes
   pastoTime: number // minutes
   startTime: number // timestamp
+  maturationTime: number // minutes (maturation in cuves)
 }
 
 export type OrderState = {
@@ -26,6 +27,7 @@ export type OrderState = {
     tlc3: number
     tlc4: number
   }
+  tlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
   osmosedVolume: number
   pasteurized: boolean
   selectedCFs: string[]
@@ -44,14 +46,15 @@ const initialState: OrderState = {
   milkReceptionValue: 0,
   targetValue: 0,
   tlsVolumes: { tls1: 0, tls2: 0, tls3: 0 },
-  tlcVolumes: { tlc1: 0, tlc2: 0, tlc3: 0, tlc4: 0 },
+  tlcVolumes: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
+  tlcRemaining: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
   osmosedVolume: 0,
   pasteurized: false,
   selectedCFs: [],
   selectedTLSs: [],
   sentAtia: false,
   sentGrunwald: false,
-  timing: { transferTime: 0, osmoseTime: 0, powderTime: 0, pastoTime: 0, startTime: 0 },
+  timing: { transferTime: 0, osmoseTime: 0, powderTime: 0, pastoTime: 0, startTime: 0, maturationTime: 0 },
   status: "idle",
 }
 
@@ -177,6 +180,21 @@ const computePastoTime = (volume: number) => {
   return Number((volume / 5000 * 60).toFixed(1))
 }
 
+const DEFAULT_MATURATION_MINUTES = 6 * 60 // 6 hours
+
+const computeRemainingTLC = (tlcVolumes: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }, takeVolume: number) => {
+  const remaining = { ...tlcVolumes }
+  let rem = Number(takeVolume)
+  const keys: (keyof typeof remaining)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+  for (const k of keys) {
+    if (rem <= 0) break
+    const take = Math.min(remaining[k], rem)
+    remaining[k] = Number((remaining[k] - take).toFixed(3))
+    rem = Number((rem - take).toFixed(3))
+  }
+  return remaining
+}
+
 const orderSlice = createSlice({
   name: "order",
   initialState,
@@ -215,6 +233,8 @@ const orderSlice = createSlice({
       state.timing.osmoseTime = computeOsmoseTime(state.milkReceivedVolume)
       state.timing.powderTime = computePowderTime(state.osmosedVolume)
       state.timing.pastoTime = computePastoTime(state.osmosedVolume)
+      state.timing.maturationTime = DEFAULT_MATURATION_MINUTES
+      state.tlcRemaining = computeRemainingTLC(state.tlcVolumes, state.milkReceivedVolume)
     },
     setGramPerPot(state, action: PayloadAction<number>) {
       state.gramPerPot = action.payload
@@ -247,6 +267,8 @@ const orderSlice = createSlice({
       state.timing.osmoseTime = computeOsmoseTime(state.milkReceivedVolume)
       state.timing.powderTime = computePowderTime(state.osmosedVolume)
       state.timing.pastoTime = computePastoTime(state.osmosedVolume)
+      state.timing.maturationTime = DEFAULT_MATURATION_MINUTES
+      state.tlcRemaining = computeRemainingTLC(state.tlcVolumes, state.milkReceivedVolume)
     },
     setMilkReceptionValue(state, action: PayloadAction<number>) {
       state.milkReceptionValue = action.payload
@@ -278,6 +300,8 @@ const orderSlice = createSlice({
       state.timing.osmoseTime = computeOsmoseTime(state.milkReceivedVolume)
       state.timing.powderTime = computePowderTime(state.osmosedVolume)
       state.timing.pastoTime = computePastoTime(state.osmosedVolume)
+      state.timing.maturationTime = DEFAULT_MATURATION_MINUTES
+      state.tlcRemaining = computeRemainingTLC(state.tlcVolumes, state.milkReceivedVolume)
     },
     setTargetValue(state, action: PayloadAction<number>) {
       state.targetValue = action.payload
@@ -306,6 +330,8 @@ const orderSlice = createSlice({
       state.timing.osmoseTime = computeOsmoseTime(state.milkReceivedVolume)
       state.timing.powderTime = computePowderTime(state.osmosedVolume)
       state.timing.pastoTime = computePastoTime(state.osmosedVolume)
+      state.timing.maturationTime = DEFAULT_MATURATION_MINUTES
+      state.tlcRemaining = computeRemainingTLC(state.tlcVolumes, state.milkReceivedVolume)
     },
     performPasteurize(state) {
       if (state.osmosedVolume <= 0) {
@@ -314,6 +340,9 @@ const orderSlice = createSlice({
       state.pasteurized = true
       state.selectedCFs = selectCuvesForVolume(state.osmosedVolume)
       state.status = state.selectedCFs.length > 0 ? "cuve" : "pasto"
+      // démarrer le compteur de maturation
+      state.timing.startTime = Date.now()
+      state.timing.maturationTime = DEFAULT_MATURATION_MINUTES
     },
     // sélection automatique des TLS selon le volume de lait cru
     autoFillTLS(state) {
@@ -349,6 +378,13 @@ const orderSlice = createSlice({
       state.status = "cuve"
     },
     sendToMachine(state, action: PayloadAction<"atia" | "grunwald">) {
+      // vérifier que la maturation a été effectuée (6h)
+      const now = Date.now()
+      const elapsedMin = state.timing.startTime ? (now - state.timing.startTime) / 60000 : 0
+      if (elapsedMin < (state.timing.maturationTime || DEFAULT_MATURATION_MINUTES)) {
+        // ne pas envoyer si pas maturé
+        return
+      }
       if (action.payload === "atia") {
         state.sentAtia = true
       } else {
