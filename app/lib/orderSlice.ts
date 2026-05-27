@@ -74,6 +74,11 @@ const computeRequiredRawMilk = (finalVolume: number, Ci: number, Cf: number) => 
   return Number((finalVolume * Cf / Ci).toFixed(3))
 }
 
+const computeOsmosedVolume = (milkVolume: number, reception: number, target: number) => {
+  if (milkVolume <= 0 || reception <= 0 || target <= 0) return 0
+  return Number((milkVolume * reception / target).toFixed(3))
+}
+
 const distributeToTLS = (totalVolume: number) => {
   let remaining = totalVolume
   const alloc = { tls1: 0, tls2: 0, tls3: 0 }
@@ -105,6 +110,11 @@ const orderSlice = createSlice({
         )
         state.tlsVolumes = distributeToTLS(state.milkReceivedVolume)
       }
+      state.osmosedVolume = computeOsmosedVolume(
+        state.milkReceivedVolume,
+        state.milkReceptionValue,
+        state.targetValue
+      )
     },
     setGramPerPot(state, action: PayloadAction<number>) {
       state.gramPerPot = action.payload
@@ -118,10 +128,20 @@ const orderSlice = createSlice({
         )
         state.tlsVolumes = distributeToTLS(state.milkReceivedVolume)
       }
+      state.osmosedVolume = computeOsmosedVolume(
+        state.milkReceivedVolume,
+        state.milkReceptionValue,
+        state.targetValue
+      )
     },
     setMilkReceivedVolume(state, action: PayloadAction<number>) {
       state.milkReceivedVolume = action.payload
       state.tlsVolumes = distributeToTLS(state.milkReceivedVolume)
+      state.osmosedVolume = computeOsmosedVolume(
+        state.milkReceivedVolume,
+        state.milkReceptionValue,
+        state.targetValue
+      )
     },
     setMilkReceptionValue(state, action: PayloadAction<number>) {
       state.milkReceptionValue = action.payload
@@ -134,6 +154,11 @@ const orderSlice = createSlice({
         )
         state.tlsVolumes = distributeToTLS(state.milkReceivedVolume)
       }
+      state.osmosedVolume = computeOsmosedVolume(
+        state.milkReceivedVolume,
+        state.milkReceptionValue,
+        state.targetValue
+      )
     },
     setTargetValue(state, action: PayloadAction<number>) {
       state.targetValue = action.payload
@@ -145,15 +170,11 @@ const orderSlice = createSlice({
         )
         state.tlsVolumes = distributeToTLS(state.milkReceivedVolume)
       }
-    },
-    performOsmose(state) {
-      if (state.milkReceivedVolume <= 0 || state.milkReceptionValue <= 0 || state.targetValue <= 0) {
-        return
-      }
-      state.osmosedVolume = Number(
-        (state.milkReceivedVolume * state.milkReceptionValue / state.targetValue).toFixed(3)
+      state.osmosedVolume = computeOsmosedVolume(
+        state.milkReceivedVolume,
+        state.milkReceptionValue,
+        state.targetValue
       )
-      state.status = "osmosis"
     },
     performPasteurize(state) {
       if (state.osmosedVolume <= 0) {
@@ -189,7 +210,6 @@ export const {
   setMilkReceivedVolume,
   setMilkReceptionValue,
   setTargetValue,
-  performOsmose,
   performPasteurize,
   assignCuve,
   sendToMachine,

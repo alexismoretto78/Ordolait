@@ -6,7 +6,6 @@ import {
   setMilkReceivedVolume,
   setMilkReceptionValue,
   setTargetValue,
-  performOsmose,
 } from "../lib/orderSlice"
 
 export default function Osmose() {
@@ -19,18 +18,23 @@ export default function Osmose() {
     status,
   } = useSelector((state: RootState) => state.order)
 
+  const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
+  const fcv = milkReceptionValue > 0 ? targetValue / milkReceptionValue : 0
+
   return (
     <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
       <h2>2. Osmose du lait</h2>
       <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
         <label>
-          Volume de lait reçu (L)
+          Volume de lait cru (L)
           <input
-            type="number"
-            min={0}
+            type="text"
+            inputMode="decimal"
+            step="any"
             value={milkReceivedVolume}
+            onFocus={(event) => event.currentTarget.select()}
             onChange={(event) =>
-              dispatch(setMilkReceivedVolume(Number(event.target.value)))
+              dispatch(setMilkReceivedVolume(parseNumber(event.target.value)))
             }
             style={{ width: "100%", marginTop: 4 }}
           />
@@ -39,11 +43,13 @@ export default function Osmose() {
         <label>
           Valeur à réception
           <input
-            type="number"
-            min={0}
+            type="text"
+            inputMode="decimal"
+            step="any"
             value={milkReceptionValue}
+            onFocus={(event) => event.currentTarget.select()}
             onChange={(event) =>
-              dispatch(setMilkReceptionValue(Number(event.target.value)))
+              dispatch(setMilkReceptionValue(parseNumber(event.target.value)))
             }
             style={{ width: "100%", marginTop: 4 }}
           />
@@ -52,25 +58,31 @@ export default function Osmose() {
         <label>
           Valeur cible après osmose
           <input
-            type="number"
-            min={0}
+            type="text"
+            inputMode="decimal"
+            step="any"
             value={targetValue}
-            onChange={(event) => dispatch(setTargetValue(Number(event.target.value)))}
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) =>
+              dispatch(setTargetValue(parseNumber(event.target.value)))
+            }
             style={{ width: "100%", marginTop: 4 }}
           />
         </label>
 
-        <button
-          type="button"
-          onClick={() => dispatch(performOsmose())}
-          style={{ width: 140, padding: 10, marginTop: 8 }}
-        >
-          Lancer osmose
-        </button>
+        <div>
+          <strong>FCV</strong>
+          <p>{fcv > 0 ? fcv.toFixed(3) : "-"}</p>
+        </div>
 
         <div>
           <strong>Volume estimé après osmose</strong>
           <p>{osmosedVolume.toFixed(3)} L</p>
+        </div>
+
+        <div>
+          <strong>Volume de lait cru</strong>
+          <p>{milkReceivedVolume.toFixed(3)} L</p>
         </div>
 
         <div>
