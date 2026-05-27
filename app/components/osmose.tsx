@@ -3,7 +3,6 @@
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import {
-  setMilkReceivedVolume,
   setMilkReceptionValue,
   setTargetValue,
 } from "../lib/orderSlice"
@@ -26,24 +25,9 @@ export default function Osmose() {
       <h2>2. Osmose du lait</h2>
       <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
         <label>
-          Volume de lait cru (L)
-          <input
-            type="text"
-            inputMode="decimal"
-            step="any"
-            value={milkReceivedVolume}
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) =>
-              dispatch(setMilkReceivedVolume(parseNumber(event.target.value)))
-            }
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </label>
-
-        <label>
           Valeur à réception
           <input
-            type="text"
+            type="number"
             inputMode="decimal"
             step="any"
             value={milkReceptionValue}
@@ -58,7 +42,7 @@ export default function Osmose() {
         <label>
           Valeur cible après osmose
           <input
-            type="text"
+            type="number"
             inputMode="decimal"
             step="any"
             value={targetValue}

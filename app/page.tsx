@@ -2,6 +2,8 @@
 
 import Commande from "./components/commande"
 import Osmose from "./components/osmose"
+import TLS from "./components/tls"
+import TTLC from "./components/ttlc"
 import Pasto from "./components/pasto"
 import Cuve from "./components/cuve"
 import Gantt from "./components/gantt"
@@ -22,6 +24,14 @@ export default function Home() {
 
       <section style={{ marginTop: 24 }}>
         <Osmose />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <TTLC />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <TLS />
       </section>
 
       <section style={{ marginTop: 24 }}>
