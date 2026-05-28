@@ -35,44 +35,39 @@ export default function TLC() {
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
 
   return (
-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
+    <div className="card">
       <h2>Gestion TLC</h2>
-      <div style={{ display: "grid", gap: 12, maxWidth: 600 }}>
-        <p>Stocks initiaux par défaut: 30000 L (modifiable)</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div className="form-grid">
+        <p className="status-text" style={{ margin: 0 }}>
+          Stocks initiaux par défaut : 30 000 L (modifiables)
+        </p>
+        
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {TLC_TANKS.map((tank, idx) => {
             const key = (`tlc${idx + 1}`) as keyof typeof tlcVolumes
             return (
-              <label key={tank.name}>
-                {tank.name}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  step="any"
-                  value={localTlcVolumes[key]}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setLocalTlcVolumes((prev) => ({ ...prev, [key]: val }))
-                    dispatch(setTLCVolume({ tank: key, volume: parseNumber(val) }))
-                  }}
-                  style={{ width: "100%", marginTop: 4 }}
-                />
-              </label>
+              <div key={tank.name} className="form-group">
+                <label className="form-label">
+                  {tank.name}
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    step="any"
+                    value={localTlcVolumes[key]}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setLocalTlcVolumes((prev) => ({ ...prev, [key]: val }))
+                      dispatch(setTLCVolume({ tank: key, volume: parseNumber(val) }))
+                    }}
+                    className="form-input"
+                  />
+                </label>
+              </div>
             )
           })}
         </div>
 
-        <div>
-          <strong>Volume réservé pour la commande</strong>
-          <p>{milkReceivedVolume.toFixed(3)} L</p>
-        </div>
-
-        <div>
-          <strong>Stocks après déduction</strong>
-          <p>TLC1: {tlcRemaining.tlc1.toFixed(3)} L — TLC2: {tlcRemaining.tlc2.toFixed(3)} L</p>
-          <p>TLC3: {tlcRemaining.tlc3.toFixed(3)} L — TLC4: {tlcRemaining.tlc4.toFixed(3)} L</p>
-        </div>
       </div>
     </div>
   )

@@ -4,52 +4,56 @@ import TLC from "./components/tlc"
 import Commande from "./components/commande"
 import Osmose from "./components/osmose"
 import TLS from "./components/tls"
-import TTLC from "./components/ttlc"
-import Pasto from "./components/pasto"
 import Cuve from "./components/cuve"
+import Lancement from "./components/lancement"
 import Gantt from "./components/gantt"
+import Simulation from "./components/simulation"
 
 export default function Home() {
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <h1>Gestion de commande - Industrie laitière</h1>
-      <p>
-        Crée une commande client en nombre de pots, calcule la masse blanche requise,
-        concentre le lait par osmose, pasteurise, stocke en cuves et envoie la masse
-        blanche aux machines Atia et Grunwald.
-      </p>
+    <main className="dashboard-container">
+      <header className="dashboard-header">
+        <h1>Gestion de commande — Industrie laitière</h1>
+        <p>
+          Créez une commande client en nombre de pots, calculez la masse blanche requise,
+          concentrez le lait par osmose, stockez en cuves et envoyez la masse
+          blanche aux machines ATIA et GRUNWALD.
+        </p>
+      </header>
 
-      <section style={{ marginTop: 24 }}>
-        <TLC />
-      </section>
+      <div className="dashboard-grid">
+        <section>
+          <TLC />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <Commande />
-      </section>
+        <section>
+          <Commande />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <Osmose />
-      </section>
+        <section>
+          <Osmose />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <TTLC />
-      </section>
+        <section>
+          <TLS />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <TLS />
-      </section>
+        <section className="full-width-section">
+          <Cuve />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <Pasto />
-      </section>
+        <section className="full-width-section">
+          <Lancement />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <Cuve />
-      </section>
+        <section className="full-width-section">
+          <Gantt />
+        </section>
 
-      <section style={{ marginTop: 24 }}>
-        <Gantt />
-      </section>
+        <section className="full-width-section">
+          <Simulation />
+        </section>
+      </div>
     </main>
   )
 }

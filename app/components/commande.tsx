@@ -3,78 +3,190 @@
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { setOrderQty, setGramPerPot } from "../lib/orderSlice"
+import { 
+  addCommand, 
+  deleteCommand, 
+  setActiveCommand, 
+  setOrderQty, 
+  setGramPerPot, 
+  setProductionStartTime 
+} from "../lib/orderSlice"
 
 export default function Commande() {
   const dispatch = useDispatch()
-  const { orderQty, gramPerPot, whiteMassKg, status } = useSelector(
+  const { commands, activeCommandId, productionStartTime, isSimulating } = useSelector(
     (state: RootState) => state.order
   )
 
-  const [localOrderQty, setLocalOrderQty] = useState(orderQty.toString())
-  const [localGramPerPot, setLocalGramPerPot] = useState(gramPerPot.toString())
+  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
 
   useEffect(() => {
-    const parsed = Number(localOrderQty.trim().replace(",", ".") || "0")
-    if (parsed !== orderQty) {
-      setLocalOrderQty(orderQty.toString())
+    if (!productionStartTime) {
+      const now = new Date()
+      const offset = now.getTimezoneOffset()
+      const localNow = new Date(now.getTime() - offset * 60 * 1000)
+      dispatch(setProductionStartTime(localNow.toISOString().slice(0, 16)))
     }
-  }, [orderQty])
+  }, [productionStartTime, dispatch])
 
+  const [localOrderQty, setLocalOrderQty] = useState(activeCommand?.orderQty?.toString() || "0")
+  const [localGramPerPot, setLocalGramPerPot] = useState(activeCommand?.gramPerPot?.toString() || "0")
+
+  // Synchronize input fields when the active command changes
   useEffect(() => {
-    const parsed = Number(localGramPerPot.trim().replace(",", ".") || "0")
-    if (parsed !== gramPerPot) {
-      setLocalGramPerPot(gramPerPot.toString())
+    if (activeCommand) {
+      setLocalOrderQty(activeCommand.orderQty.toString())
+      setLocalGramPerPot(activeCommand.gramPerPot.toString())
     }
-  }, [gramPerPot])
+  }, [activeCommandId, activeCommand?.orderQty, activeCommand?.gramPerPot])
 
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
 
   return (
-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h2>1. Commande client</h2>
-      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
-        <label>
-          Nombre de pots
-          <input
-            type="text"
-            inputMode="decimal"
-            step="any"
-            value={localOrderQty}
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => {
-              const val = event.target.value
-              setLocalOrderQty(val)
-              dispatch(setOrderQty(parseNumber(val)))
-            }}
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </label>
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>1. Commandes clients</h2>
+        <button
+          type="button"
+          onClick={() => dispatch(addCommand())}
+          className="btn btn-success"
+          style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+        >
+          ➕ Ajouter une commande
+        </button>
+      </div>
 
-        <label>
-          Grammage par pot (g)
-          <input
-            type="text"
-            inputMode="decimal"
-            step="any"
-            value={localGramPerPot}
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => {
-              const val = event.target.value
-              setLocalGramPerPot(val)
-              dispatch(setGramPerPot(parseNumber(val)))
-            }}
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </label>
+      {/* Command Tabs Selection */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
+        {commands.map((cmd, idx) => {
+          const isActive = cmd.id === activeCommandId
+          return (
+            <div
+              key={cmd.id}
+              onClick={() => dispatch(setActiveCommand(cmd.id))}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 14px",
+                borderRadius: "var(--radius-md)",
+                border: `1px solid ${isActive ? "var(--primary)" : "var(--border-color)"}`,
+                backgroundColor: isActive ? "var(--primary-light)" : "white",
+                color: isActive ? "var(--primary)" : "var(--text-main)",
+                fontWeight: isActive ? "700" : "500",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+                transition: "var(--transition)",
+                whiteSpace: "nowrap",
+                boxShadow: isActive ? "var(--shadow-sm)" : "none",
+              }}
+            >
+              <span>{cmd.name}</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
+                ({(cmd.orderQty / 1000).toFixed(0)}k pots)
+              </span>
+              
+              {commands.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    dispatch(deleteCommand(cmd.id))
+                  }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    color: isActive ? "var(--primary)" : "var(--text-muted)",
+                    cursor: "pointer",
+                    fontSize: "0.95rem",
+                    padding: "0 2px",
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "var(--transition)",
+                  }}
+                  title="Supprimer la commande"
+                  onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
+                  onMouseLeave={(e) => e.currentTarget.style.color = isActive ? "var(--primary)" : "var(--text-muted)"}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
 
-        <div>
-          <strong>Masse blanche requise</strong>
-          <p>{whiteMassKg.toFixed(3)} kg</p>
+      <div className="form-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">
+              Nombre de pots
+              <input
+                type="text"
+                inputMode="decimal"
+                step="any"
+                value={localOrderQty}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  const val = event.target.value
+                  setLocalOrderQty(val)
+                  dispatch(setOrderQty(parseNumber(val)))
+                }}
+                className="form-input"
+              />
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Grammage par pot (g)
+              <input
+                type="text"
+                inputMode="decimal"
+                step="any"
+                value={localGramPerPot}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  const val = event.target.value
+                  setLocalGramPerPot(val)
+                  dispatch(setGramPerPot(parseNumber(val)))
+                }}
+                className="form-input"
+              />
+            </label>
+          </div>
         </div>
 
-        <div>
-          <small>Statut de la commande : {status}</small>
+        <div className="form-group">
+          <label className="form-label">
+            Date & Heure globale de début de production
+            <input
+              type="datetime-local"
+              value={productionStartTime}
+              disabled={isSimulating}
+              onChange={(event) => {
+                dispatch(setProductionStartTime(event.target.value))
+              }}
+              className="form-input"
+            />
+          </label>
+        </div>
+
+        <div className="info-section" style={{ marginTop: 8 }}>
+          <div className="info-item">
+            <span className="info-label">Masse blanche active</span>
+            <span className="info-value">{activeCommand?.whiteMassKg?.toFixed(1) || "0.0"} kg</span>
+          </div>
+          <div className="info-item">
+            <span className="info-label">Lait cru active</span>
+            <span className="info-value">{activeCommand?.milkReceivedVolume?.toFixed(1) || "0.0"} L</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="status-text" style={{ margin: 0 }}>
+            Statut commande active : <strong style={{ color: "var(--primary)" }}>{activeCommand?.status?.toUpperCase() || "IDLE"}</strong>
+          </span>
         </div>
       </div>
     </div>

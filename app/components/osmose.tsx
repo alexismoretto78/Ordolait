@@ -11,87 +11,92 @@ import {
 export default function Osmose() {
   const dispatch = useDispatch()
   const {
-    milkReceivedVolume,
-    milkReceptionValue,
-    targetValue,
-    osmosedVolume,
-    status,
+    commands,
+    activeCommandId
   } = useSelector((state: RootState) => state.order)
 
-  const [localMilkReception, setLocalMilkReception] = useState(milkReceptionValue.toString())
-  const [localTarget, setLocalTarget] = useState(targetValue.toString())
+  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
 
-  useEffect(() => {
-    const parsed = Number(localMilkReception.trim().replace(",", ".") || "0")
-    if (parsed !== milkReceptionValue) {
-      setLocalMilkReception(milkReceptionValue.toString())
-    }
-  }, [milkReceptionValue])
+  const [localMilkReception, setLocalMilkReception] = useState(activeCommand.milkReceptionValue.toString())
+  const [localTarget, setLocalTarget] = useState(activeCommand.targetValue.toString())
 
+  // Sync inputs when switching commands or when redux values change externally
   useEffect(() => {
-    const parsed = Number(localTarget.trim().replace(",", ".") || "0")
-    if (parsed !== targetValue) {
-      setLocalTarget(targetValue.toString())
+    if (activeCommand) {
+      setLocalMilkReception(activeCommand.milkReceptionValue.toString())
+      setLocalTarget(activeCommand.targetValue.toString())
     }
-  }, [targetValue])
+  }, [activeCommandId, activeCommand.milkReceptionValue, activeCommand.targetValue])
 
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
-  const fcv = milkReceptionValue > 0 ? targetValue / milkReceptionValue : 0
+  const fcv = activeCommand.milkReceptionValue > 0 ? activeCommand.targetValue / activeCommand.milkReceptionValue : 0
 
   return (
-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h2>2. Osmose du lait</h2>
-      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
-        <label>
-          Valeur à réception
-          <input
-            type="text"
-            step="any"
-            value={localMilkReception}
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => {
-              const val = event.target.value
-              setLocalMilkReception(val)
-              dispatch(setMilkReceptionValue(parseNumber(val)))
-            }}
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </label>
-
-        <label>
-          Valeur cible après osmose
-          <input
-            type="text"
-            inputMode="decimal"
-            step="any"
-            value={localTarget}
-            onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => {
-              const val = event.target.value
-              setLocalTarget(val)
-              dispatch(setTargetValue(parseNumber(val)))
-            }}
-            style={{ width: "100%", marginTop: 4 }}
-          />
-        </label>
-
-        <div>
-          <strong>FCV</strong>
-          <p>{fcv > 0 ? fcv.toFixed(3) : "-"}</p>
+    <div className="card">
+      <h2>2. Osmose du lait — {activeCommand.name}</h2>
+      <div className="form-grid">
+        <div className="form-group">
+          <label className="form-label">
+            Valeur à réception
+            <input
+              type="text"
+              inputMode="decimal"
+              value={localMilkReception}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => {
+                const val = event.target.value
+                setLocalMilkReception(val)
+                dispatch(setMilkReceptionValue(parseNumber(val)))
+              }}
+              className="form-input"
+            />
+          </label>
         </div>
 
-        <div>
-          <strong>Volume estimé après osmose</strong>
-          <p>{osmosedVolume.toFixed(3)} L</p>
+        <div className="form-group">
+          <label className="form-label">
+            Valeur cible après osmose
+            <input
+              type="text"
+              inputMode="decimal"
+              value={localTarget}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => {
+                const val = event.target.value
+                setLocalTarget(val)
+                dispatch(setTargetValue(parseNumber(val)))
+              }}
+              className="form-input"
+            />
+          </label>
         </div>
 
-        <div>
-          <strong>Volume de lait cru</strong>
-          <p>{milkReceivedVolume.toFixed(3)} L</p>
+        <div className="info-section">
+          <div className="info-item">
+            <span className="info-label">FCV</span>
+            <span className="info-value">{fcv > 0 ? fcv.toFixed(3) : "-"}</span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Volume osmosé</span>
+            <span className="info-value">{activeCommand.osmosedVolume.toFixed(1)} L</span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Volume lait cru</span>
+            <span className="info-value">{activeCommand.milkReceivedVolume.toFixed(1)} L</span>
+          </div>
         </div>
 
-        <div>
-          <small>Statut de processus : {status}</small>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div>
+            <span className="status-text">
+              Statut processus : {activeCommand.status}
+            </span>
+          </div>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", marginTop: 4 }}>
+            * Durée de l&apos;osmose : 1h30 (90 min) pour 5 200 L de lait cru pour un FCV de 1,28 (s&apos;ajuste proportionnellement selon le volume et le FCV réel).
+          </p>
         </div>
       </div>
     </div>

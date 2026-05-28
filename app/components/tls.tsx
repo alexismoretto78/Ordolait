@@ -6,38 +6,35 @@ import { autoFillTLS, TLS_TANKS, toggleTLSSelection } from "../lib/orderSlice"
 
 export default function TLS() {
   const dispatch = useDispatch()
-  const { milkReceivedVolume, tlsVolumes, selectedTLSs } = useSelector(
+  const { commands, activeCommandId } = useSelector(
     (state: RootState) => state.order
   )
 
-  const selectedCapacity = selectedTLSs.reduce((total, name) => {
+  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
+
+  const selectedCapacity = activeCommand.selectedTLSs.reduce((total, name) => {
     const tank = TLS_TANKS.find((t) => t.name === name)
     return total + (tank?.capacity ?? 0)
   }, 0)
 
-  const remaining = Math.max(0, milkReceivedVolume - selectedCapacity)
+  const remaining = Math.max(0, activeCommand.milkReceivedVolume - selectedCapacity)
 
   return (
-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h2>2.1. Sélection des TLS</h2>
-      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
+    <div className="card">
+      <h2>3. Réservoirs TLS (transfert) — {activeCommand.name}</h2>
+      <div className="form-grid">
         <div>
-          <strong>Tanks TLS</strong>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+          <span className="form-label">Tanks TLS</span>
+          <div className="tank-grid">
             {TLS_TANKS.map((tank) => {
-              const selected = selectedTLSs.includes(tank.name)
+              const selected = activeCommand.selectedTLSs.includes(tank.name)
               return (
                 <button
                   key={tank.name}
                   type="button"
                   onClick={() => dispatch(toggleTLSSelection(tank.name))}
-                  disabled={milkReceivedVolume <= 0 && !selected}
-                  style={{
-                    padding: 10,
-                    border: selected ? "2px solid #0070f3" : "1px solid #ccc",
-                    background: selected ? "#e6f0ff" : "white",
-                    cursor: milkReceivedVolume > 0 ? "pointer" : "not-allowed",
-                  }}
+                  disabled={activeCommand.milkReceivedVolume <= 0 && !selected}
+                  className={`tank-button ${selected ? "active" : ""}`}
                 >
                   {tank.name} ({tank.capacity} L)
                 </button>
@@ -46,26 +43,45 @@ export default function TLS() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           <button
             type="button"
             onClick={() => dispatch(autoFillTLS())}
-            disabled={milkReceivedVolume <= 0}
-            style={{ padding: 10 }}
+            disabled={activeCommand.milkReceivedVolume <= 0}
+            className="btn btn-secondary"
           >
             Remplissage automatique
           </button>
         </div>
 
-        <div>
-          <strong>Volume TLS alloué</strong>
-          <p>{selectedCapacity.toFixed(3)} / {milkReceivedVolume.toFixed(3)} L</p>
-          <p>Volume restant : {remaining.toFixed(3)} L</p>
+        <div className="info-section">
+          <div className="info-item">
+            <span className="info-label">Volume TLS alloué</span>
+            <span className="info-value">{selectedCapacity.toFixed(1)} / {activeCommand.milkReceivedVolume.toFixed(1)} L</span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Volume restant</span>
+            <span className="info-value" style={{ color: remaining > 0 ? "var(--danger)" : "var(--success)" }}>
+              {remaining.toFixed(1)} L
+            </span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Temps transfert estimé</span>
+            <span className="info-value">{activeCommand.timing.transferTime.toFixed(1)} min</span>
+          </div>
         </div>
 
-        <div>
-          <strong>Répartition automatique (si demandée)</strong>
-          <p>TLS1: {tlsVolumes.tls1.toFixed(3)} L — TLS2: {tlsVolumes.tls2.toFixed(3)} L — TLS3: {tlsVolumes.tls3.toFixed(3)} L</p>
+        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", marginTop: 4 }}>
+          * Vitesse de transfert TLC ➔ TLS : 20 min pour 5 200 L de lait cru (s&apos;ajuste proportionnellement).
+        </p>
+
+        <div style={{ backgroundColor: "#f8fafc", padding: 12, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)", marginTop: 8 }}>
+          <span className="info-label" style={{ display: "block", marginBottom: 4 }}>Répartition automatique</span>
+          <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)" }}>
+            TLS1: {activeCommand.tlsVolumes.tls1.toFixed(1)} L — TLS2: {activeCommand.tlsVolumes.tls2.toFixed(1)} L — TLS3: {activeCommand.tlsVolumes.tls3.toFixed(1)} L
+          </p>
         </div>
       </div>
     </div>

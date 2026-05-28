@@ -3,88 +3,115 @@
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import {
-  sendToMachine,
   CF_TANKS,
   toggleCuveSelection,
 } from "../lib/orderSlice"
 
 export default function Cuve() {
   const dispatch = useDispatch()
-  const { pasteurized, selectedCFs, sentAtia, sentGrunwald, status, whiteMassKg, osmosedVolume, milkReceivedVolume } =
-    useSelector((state: RootState) => state.order)
+  const { commands, activeCommandId } = useSelector((state: RootState) => state.order)
 
-  const selectedCapacity = selectedCFs.reduce((total, name) => {
+  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
+
+  const selectedCapacity = activeCommand.selectedCFs.reduce((total, name) => {
     const tank = CF_TANKS.find((t) => t.name === name)
     return total + (tank?.capacity ?? 0)
   }, 0)
 
-  const volumeForCF = osmosedVolume
+  const volumeForCF = activeCommand.osmosedVolume
   const remainingVolume = Math.max(0, volumeForCF - selectedCapacity)
 
+  // Calcule le volume distribué à chaque cuve sélectionnée
+  const allocatedVolumes: { [key: string]: number } = {}
+  let remainingVolumeToDistribute = volumeForCF
+
+  CF_TANKS.forEach((tank) => {
+    if (activeCommand.selectedCFs.includes(tank.name)) {
+      const allocated = Math.min(remainingVolumeToDistribute, tank.capacity)
+      allocatedVolumes[tank.name] = allocated
+      remainingVolumeToDistribute = Math.max(0, remainingVolumeToDistribute - allocated)
+    } else {
+      allocatedVolumes[tank.name] = 0
+    }
+  })
+
   return (
-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h2>4. Stockage en cuve et envoi machines</h2>
-      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
+    <div className="card">
+      <h2>4. Stockage en cuves — {activeCommand.name}</h2>
+      <div className="form-grid">
         <div>
-          <strong>Cuves de destination</strong>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+          <span className="form-label" style={{ marginBottom: 12 }}>Cuves de stockage (sélection des cuves de maturation)</span>
+          
+          <div className="cuve-grid">
             {CF_TANKS.map((tank) => {
-              const selected = selectedCFs.includes(tank.name)
+              const selected = activeCommand.selectedCFs.includes(tank.name)
+              const isDisabled = !activeCommand.pasteurized || (!selected && selectedCapacity >= volumeForCF)
+
               return (
-                <button
+                <div
                   key={tank.name}
-                  type="button"
-                  onClick={() => dispatch(toggleCuveSelection(tank.name))}
-                  disabled={!pasteurized || (!selected && selectedCapacity >= volumeForCF)}
-                  style={{
-                    padding: 10,
-                    border: selected ? "2px solid #0070f3" : "1px solid #ccc",
-                    background: selected ? "#e6f0ff" : "white",
-                    cursor: pasteurized ? "pointer" : "not-allowed",
+                  className={`cuve-card ${selected ? "active" : ""}`}
+                  style={{ opacity: isDisabled ? 0.5 : 1 }}
+                  onClick={() => {
+                    if (!isDisabled) {
+                      dispatch(toggleCuveSelection(tank.name))
+                    }
                   }}
                 >
-                  {tank.name} ({tank.capacity} L)
-                </button>
+                  <div
+                    style={{
+                      cursor: isDisabled ? "not-allowed" : "pointer",
+                      width: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span className="cuve-title">
+                      {tank.name}
+                    </span>
+                    <span className="cuve-capacity">
+                      Capacité : {tank.capacity} L
+                    </span>
+                    {selected && (
+                      <span className="cuve-volume">
+                        Vol: {allocatedVolumes[tank.name].toFixed(1)} L
+                      </span>
+                    )}
+                  </div>
+                </div>
               )
             })}
           </div>
         </div>
 
-        <div>
-          <strong>Volume assigné</strong>
-          <p>{selectedCapacity.toFixed(3)} / {volumeForCF.toFixed(3)} L</p>
-          <p>Volume restant : {remainingVolume.toFixed(3)} L</p>
+        <div className="info-section">
+          <div className="info-item">
+            <span className="info-label">Volume assigné</span>
+            <span className="info-value">{selectedCapacity.toFixed(1)} / {volumeForCF.toFixed(1)} L</span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Volume restant</span>
+            <span className="info-value" style={{ color: remainingVolume > 0 ? "var(--danger)" : "var(--success)" }}>
+              {remainingVolume.toFixed(1)} L
+            </span>
+          </div>
+
+          <div className="info-item">
+            <span className="info-label">Masse blanche de la commande</span>
+            <span className="info-value">{activeCommand.whiteMassKg.toFixed(1)} kg</span>
+          </div>
         </div>
 
-        <div>
-          <strong>Masse blanche à expédier</strong>
-          <p>{whiteMassKg.toFixed(3)} kg</p>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            disabled={!pasteurized || selectedCFs.length === 0}
-            onClick={() => dispatch(sendToMachine("atia"))}
-            style={{ padding: 10 }}
-          >
-            Envoyer à Atia
-          </button>
-          <button
-            type="button"
-            disabled={!pasteurized || selectedCFs.length === 0}
-            onClick={() => dispatch(sendToMachine("grunwald"))}
-            style={{ padding: 10 }}
-          >
-            Envoyer à Grunwald
-          </button>
-        </div>
-
-        <div>
-          <p>Cuves sélectionnées : {selectedCFs.length ? selectedCFs.join(", ") : "Aucune"}</p>
-          <p>Atia : {sentAtia ? "OK" : "En attente"}</p>
-          <p>Grunwald : {sentGrunwald ? "OK" : "En attente"}</p>
-          <small>Statut de processus : {status}</small>
+        <div style={{ marginTop: 8 }}>
+          <span className="status-text" style={{ marginRight: 8 }}>
+            Cuves sélectionnées : {activeCommand.selectedCFs.length ? activeCommand.selectedCFs.join(", ") : "Aucune"}
+          </span>
+          <span className="status-text">
+            Statut : {activeCommand.status}
+          </span>
         </div>
       </div>
     </div>
