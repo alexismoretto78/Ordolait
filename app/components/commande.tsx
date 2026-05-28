@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import { setOrderQty, setGramPerPot } from "../lib/orderSlice"
@@ -9,6 +10,23 @@ export default function Commande() {
   const { orderQty, gramPerPot, whiteMassKg, status } = useSelector(
     (state: RootState) => state.order
   )
+
+  const [localOrderQty, setLocalOrderQty] = useState(orderQty.toString())
+  const [localGramPerPot, setLocalGramPerPot] = useState(gramPerPot.toString())
+
+  useEffect(() => {
+    const parsed = Number(localOrderQty.trim().replace(",", ".") || "0")
+    if (parsed !== orderQty) {
+      setLocalOrderQty(orderQty.toString())
+    }
+  }, [orderQty])
+
+  useEffect(() => {
+    const parsed = Number(localGramPerPot.trim().replace(",", ".") || "0")
+    if (parsed !== gramPerPot) {
+      setLocalGramPerPot(gramPerPot.toString())
+    }
+  }, [gramPerPot])
 
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
 
@@ -22,9 +40,13 @@ export default function Commande() {
             type="text"
             inputMode="decimal"
             step="any"
-            value={orderQty}
+            value={localOrderQty}
             onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => dispatch(setOrderQty(parseNumber(event.target.value)))}
+            onChange={(event) => {
+              const val = event.target.value
+              setLocalOrderQty(val)
+              dispatch(setOrderQty(parseNumber(val)))
+            }}
             style={{ width: "100%", marginTop: 4 }}
           />
         </label>
@@ -35,9 +57,13 @@ export default function Commande() {
             type="text"
             inputMode="decimal"
             step="any"
-            value={gramPerPot}
+            value={localGramPerPot}
             onFocus={(event) => event.currentTarget.select()}
-            onChange={(event) => dispatch(setGramPerPot(parseNumber(event.target.value)))}
+            onChange={(event) => {
+              const val = event.target.value
+              setLocalGramPerPot(val)
+              dispatch(setGramPerPot(parseNumber(val)))
+            }}
             style={{ width: "100%", marginTop: 4 }}
           />
         </label>

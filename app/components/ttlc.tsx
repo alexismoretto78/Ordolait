@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import { setTLCVolume, TLC_TANKS } from "../lib/orderSlice"
@@ -8,10 +9,33 @@ export default function TTLC() {
   const dispatch = useDispatch()
   const { tlcVolumes } = useSelector((state: RootState) => state.order)
 
+  const [localTlcVolumes, setLocalTlcVolumes] = useState(() => ({
+    tlc1: tlcVolumes.tlc1.toString(),
+    tlc2: tlcVolumes.tlc2.toString(),
+    tlc3: tlcVolumes.tlc3.toString(),
+    tlc4: tlcVolumes.tlc4.toString(),
+  }))
+
+  useEffect(() => {
+    const keys: (keyof typeof tlcVolumes)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+    const updated = { ...localTlcVolumes }
+    let changed = false
+    for (const key of keys) {
+      const parsed = Number(localTlcVolumes[key].trim().replace(",", ".") || "0")
+      if (parsed !== tlcVolumes[key]) {
+        updated[key] = tlcVolumes[key].toString()
+        changed = true
+      }
+    }
+    if (changed) {
+      setLocalTlcVolumes(updated)
+    }
+  }, [tlcVolumes])
+
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
 
-  const handleVolumeChange = (tank: keyof typeof tlcVolumes, value: number) => {
-    dispatch(setTLCVolume({ tank, volume: value }))
+  const handleVolumeChange = (tank: keyof typeof tlcVolumes, volume: number) => {
+    dispatch(setTLCVolume({ tank, volume }))
   }
 
   const totalVolume = Object.values(tlcVolumes).reduce((sum, vol) => sum + vol, 0)
@@ -29,11 +53,13 @@ export default function TTLC() {
                 type="text"
                 inputMode="decimal"
                 step="any"
-                value={tlcVolumes[key]}
+                value={localTlcVolumes[key]}
                 onFocus={(event) => event.currentTarget.select()}
                 onChange={(event) => {
-                  const volume = parseNumber(event.target.value)
+                  const val = event.target.value
+                  const volume = parseNumber(val)
                   if (volume <= tank.capacity) {
+                    setLocalTlcVolumes((prev) => ({ ...prev, [key]: val }))
                     handleVolumeChange(key, volume)
                   }
                 }}

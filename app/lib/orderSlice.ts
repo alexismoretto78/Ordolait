@@ -90,20 +90,46 @@ const CF_TANKS = [
 ]
 
 const selectCuvesForVolume = (volume: number) => {
-  const selected: string[] = []
-  if (volume <= 0) return selected
-  let accumulated = 0
-  // trier par capacité décroissante pour utiliser d'abord les plus grosses cuves
-  const sorted = CF_TANKS.slice().sort((a, b) => {
-    if (a.capacity !== b.capacity) return b.capacity - a.capacity
-    return a.name.localeCompare(b.name)
-  })
-  for (const tank of sorted) {
-    selected.push(tank.name)
-    accumulated += tank.capacity
-    if (accumulated >= volume) break
+  if (volume <= 0) return []
+
+  const n = CF_TANKS.length
+  let bestCombination: typeof CF_TANKS = []
+  let bestTotalCapacity = Infinity
+
+  for (let i = 1; i < (1 << n); i++) {
+    const currentCombination: typeof CF_TANKS = []
+    let currentCapacity = 0
+
+    for (let j = 0; j < n; j++) {
+      if ((i & (1 << j)) !== 0) {
+        currentCombination.push(CF_TANKS[j])
+        currentCapacity += CF_TANKS[j].capacity
+      }
+    }
+
+    if (currentCapacity >= volume) {
+      if (currentCapacity < bestTotalCapacity) {
+        bestTotalCapacity = currentCapacity
+        bestCombination = currentCombination
+      } else if (currentCapacity === bestTotalCapacity) {
+        if (currentCombination.length < bestCombination.length) {
+          bestCombination = currentCombination
+        } else if (currentCombination.length === bestCombination.length) {
+          const namesCurrent = currentCombination.map(t => t.name).sort().join(",")
+          const namesBest = bestCombination.map(t => t.name).sort().join(",")
+          if (namesCurrent < namesBest) {
+            bestCombination = currentCombination
+          }
+        }
+      }
+    }
   }
-  return selected
+
+  if (bestCombination.length === 0) {
+    return CF_TANKS.map(t => t.name)
+  }
+
+  return bestCombination.map(t => t.name)
 }
 
 const getSelectedCFCapacity = (selectedCFs: string[]) =>
@@ -130,26 +156,53 @@ const distributeToTLS = (totalVolume: number) => {
   const alloc = { tls1: 0, tls2: 0, tls3: 0 }
   const caps = TLS_TANKS.map((t) => t.capacity)
   const keys: (keyof typeof alloc)[] = ["tls1", "tls2", "tls3"]
+  
+  // 1. Distribution initiale
   for (let i = 0; i < keys.length; i++) {
     const take = Math.min(remaining, caps[i])
     alloc[keys[i]] = Number(take.toFixed(3))
     remaining = Number((remaining - take).toFixed(3))
     if (remaining <= 0) break
   }
+
+  // 2. Ajustement : pas moins de 1000 L dans un TLS actif.
+  // Si c'est le cas, on prélève sur les autres (en partant du plus proche) pour compléter.
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const key = keys[i]
+    const volume = alloc[key]
+    
+    if (volume > 0 && volume < 1000) {
+      let needed = Number((1000 - volume).toFixed(3))
+      
+      // On cherche des donateurs parmi les autres TLS (priorité aux plus proches dans l'ordre cyclique inverse)
+      for (let d = 1; d < keys.length; d++) {
+        const j = (i - d + keys.length) % keys.length
+        const otherKey = keys[j]
+        const otherVolume = alloc[otherKey]
+        
+        if (otherVolume > 1000) {
+          const available = Number((otherVolume - 1000).toFixed(3))
+          const toTake = Math.min(needed, available)
+          
+          alloc[otherKey] = Number((otherVolume - toTake).toFixed(3))
+          alloc[key] = Number((alloc[key] + toTake).toFixed(3))
+          needed = Number((needed - toTake).toFixed(3))
+          
+          if (needed <= 0) break
+        }
+      }
+    }
+  }
+
   return alloc
 }
 
 const selectTLSForVolume = (volume: number) => {
+  const alloc = distributeToTLS(volume)
   const selected: string[] = []
-  if (volume <= 0) return selected
-  let accumulated = 0
-  // ordre fixe: TLS1 puis TLS2 puis TLS3
-  const ordered = TLS_TANKS.slice()
-  for (const tank of ordered) {
-    selected.push(tank.name)
-    accumulated += tank.capacity
-    if (accumulated >= volume) break
-  }
+  if (alloc.tls1 > 0) selected.push("TLS1")
+  if (alloc.tls2 > 0) selected.push("TLS2")
+  if (alloc.tls3 > 0) selected.push("TLS3")
   return selected
 }
 
