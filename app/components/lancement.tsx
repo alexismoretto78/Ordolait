@@ -96,7 +96,9 @@ export default function Lancement() {
                 <div>
                   <span className="launch-title">{name}</span>
                   <div className="launch-volume">
-                    Volume alloué : <strong>{volume.toFixed(1)} L</strong>
+                    <span className="hide-mobile">Volume alloué : </span>
+                    <span className="show-mobile-inline" style={{ display: "none" }}>Vol : </span>
+                    <strong>{volume.toFixed(0)} L</strong>
                   </div>
                 </div>
                 
@@ -109,8 +111,8 @@ export default function Lancement() {
               </div>
 
               {/* Destination Selector Configuration */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, backgroundColor: "var(--bg-app)", padding: 10, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)" }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, backgroundColor: "var(--bg-app)", padding: 6, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)" }}>
+                <span className="hide-mobile" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
                   1. Machine de destination
                 </span>
                 <div className="cuve-dest-btn-group" style={{ justifyContent: "flex-start", gap: 6 }}>
@@ -126,7 +128,7 @@ export default function Lancement() {
                           dispatch(setCFDestination({ name, destination: dest }))
                         }}
                         className={`cuve-dest-btn ${isDestSelected ? "active" : ""}`}
-                        style={{ padding: "6px 12px", fontSize: "0.72rem", borderRadius: "4px" }}
+                        style={{ padding: "4px 8px", fontSize: "0.7rem", borderRadius: "4px" }}
                       >
                         {label}
                       </button>
@@ -137,7 +139,7 @@ export default function Lancement() {
 
               {/* Destination & Actions Panel */}
               <div className="launch-actions">
-                <span className="launch-actions-title">
+                <span className="launch-actions-title hide-mobile">
                   2. Pilotage machine
                 </span>
 
@@ -155,7 +157,8 @@ export default function Lancement() {
                         onClick={() => dispatch(launchCFToMachine({ name, machine: "atia" }))}
                         className="btn-launch-machine btn-atia"
                       >
-                        Lancer sur ATIA
+                        <span className="hide-mobile">Lancer sur ATIA</span>
+                        <span className="show-mobile-inline" style={{ display: "none" }}>Lancer</span>
                       </button>
                     )}
                   </div>
@@ -175,7 +178,8 @@ export default function Lancement() {
                         onClick={() => dispatch(launchCFToMachine({ name, machine: "grunwald" }))}
                         className="btn-launch-machine btn-grunwald"
                       >
-                        Lancer sur GRUN
+                        <span className="hide-mobile">Lancer sur GRUN</span>
+                        <span className="show-mobile-inline" style={{ display: "none" }}>Lancer</span>
                       </button>
                     )}
                   </div>

@@ -966,6 +966,52 @@ body {
   .hide-mobile {
     display: none;
   }
+
+  .show-mobile-inline {
+    display: inline !important;
+  }
+
+  .launch-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .launch-card {
+    padding: 10px;
+    gap: 8px;
+    border-radius: var(--radius-md);
+  }
+
+  .launch-title {
+    font-size: 0.95rem;
+  }
+
+  .launch-volume {
+    font-size: 0.75rem;
+  }
+
+  .badge-completed {
+    padding: 2px 6px;
+    font-size: 0.55rem;
+  }
+
+  .launch-actions {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .launch-row {
+    min-height: 28px;
+  }
+
+  .launch-row-label {
+    font-size: 0.75rem;
+  }
+
+  .btn-launch-machine {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
 }
 
 /* Small Mobile Screens (< 480px) */
@@ -1018,8 +1064,45 @@ body {
   }
 
   .launch-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .launch-card {
+    padding: 8px 6px;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .launch-title {
+    font-size: 0.85rem;
+  }
+
+  .launch-volume {
+    font-size: 0.7rem;
+  }
+
+  .badge-completed {
+    padding: 1px 4px;
+    font-size: 0.5rem;
+  }
+
+  .launch-actions {
+    padding: 6px;
+    gap: 4px;
+  }
+
+  .launch-row {
+    min-height: 24px;
+  }
+
+  .launch-row-label {
+    font-size: 0.7rem;
+  }
+
+  .btn-launch-machine {
+    padding: 3px 6px;
+    font-size: 0.65rem;
   }
 
   .info-section {
