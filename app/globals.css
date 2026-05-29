@@ -1133,4 +1133,33 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* --- ADDITIONAL PREMIUM MOBILE RESPONSIVENESS --- */
+@media (max-width: 768px) {
+  /* Make tabs navigation scroll horizontally on mobile so it doesn't wrap awkwardly */
+  .mobile-tab-bar {
+    overflow-x: auto;
+    justify-content: flex-start !important;
+    max-width: 100% !important;
+    padding: 6px !important;
+    border-radius: var(--radius-md) !important;
+    position: relative !important;
+    top: 0 !important;
+    margin-bottom: 24px !important;
+  }
+  
+  .mobile-tab-bar button {
+    flex: none !important;
+    min-width: 155px;
+    padding: 10px 8px !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Make launching destination buttons wrap into vertical buttons on mobile */
+  .ref-dest-group {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+}
+
+
 

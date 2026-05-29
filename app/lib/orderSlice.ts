@@ -9,20 +9,38 @@ export type TimingInfo = {
   maturationTime: number // minutes (maturation in cuves)
 }
 
+export type Batch = {
+  id: string
+  lotNumber: string // aammjjhhmm
+  volume: number // L
+  protein: number // g/L (matière protéique)
+  fat: number // g/L (matière grasse)
+  milkType: MilkType
+}
+
+export type ProductReference = {
+  id: string
+  name: string
+  potsQty: number
+  gramPerPot: number
+}
+
 export type Command = {
   id: string
   name: string
-  orderQty: number
-  gramPerPot: number
+  references: ProductReference[]
   whiteMassKg: number
   milkReceivedVolume: number
-  milkReceptionValue: number
-  targetValue: number
+  milkReceptionValue: number // Ci - calculated dynamically from TLC batches used
+  targetValue: number // Cf - target protein level after osmosis
   tlsVolumes: { tls1: number; tls2: number; tls3: number }
   selectedTLSs: string[]
   selectedCFs: string[]
   cfDestinations: { [tankName: string]: "atia" | "grunwald" | "both" }
   cfSentStatus: { [tankName: string]: { atia: boolean; grunwald: boolean } }
+  refDestinations: { [refId: string]: "atia" | "grunwald" | "both" }
+  refSentStatus: { [refId: string]: { atia: boolean; grunwald: boolean } }
+  refPotsLaunched: { [refId: string]: { atia?: number; grunwald?: number } }
   timing: TimingInfo
   status: "idle" | "order" | "osmosis" | "pasto" | "cuve" | "dispatched"
   osmosedVolume: number
@@ -69,14 +87,19 @@ export type GanttTask = {
 export type MultiCommandSimResults = {
   totalDurationMinutes: number
   commandsResults: { [id: string]: CommandSimResult }
-  tlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
+  tlcRemainingBatches: {
+    tlc1: Batch[]
+    tlc2: Batch[]
+    tlc3: Batch[]
+    tlc4: Batch[]
+  }
   ganttTasks: GanttTask[]
 }
 
 export type MilkType = "bio" | "fcv3" | "savoie" | "montagne"
 
 export type OrderState = {
-  // Shared root fallbacks (for backward compatibility)
+  // Backwards compatibility root fallbacks
   orderQty: number
   gramPerPot: number
   whiteMassKg: number
@@ -100,6 +123,14 @@ export type OrderState = {
   cfSentStatus: { [tankName: string]: { atia: boolean; grunwald: boolean } }
   productionStartTime: string
   
+  // TLC Batches State
+  tlcBatches: {
+    tlc1: Batch[]
+    tlc2: Batch[]
+    tlc3: Batch[]
+    tlc4: Batch[]
+  }
+  
   // Simulation status fields
   isSimulating: boolean
   simulationDone: boolean
@@ -108,11 +139,10 @@ export type OrderState = {
   
   // Results
   simulatedTiming: TimingInfo
-  simulatedTlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
   simulatedMilkReceivedVolume: number
   simulatedOsmosedVolume: number
 
-  // New multi-command states
+  // Multi-command states
   commands: Command[]
   activeCommandId: string
   simulationResults?: MultiCommandSimResults
@@ -128,57 +158,96 @@ const initialCommand = (id: string, name: string): Command => {
     cfSentStatus[name] = { atia: false, grunwald: false }
   })
 
+  const references: ProductReference[] = [
+    { id: "ref-1", name: "Nature 125g", potsQty: 80000, gramPerPot: 125 },
+    { id: "ref-2", name: "Fraise 120g", potsQty: 40000, gramPerPot: 120 },
+  ]
+
+  const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {
+    "ref-1": "both",
+    "ref-2": "both",
+  }
+
+  const refSentStatus: { [refId: string]: { atia: boolean; grunwald: boolean } } = {
+    "ref-1": { atia: false, grunwald: false },
+    "ref-2": { atia: false, grunwald: false },
+  }
+
+  const refPotsLaunched: { [refId: string]: { atia?: number; grunwald?: number } } = {
+    "ref-1": {},
+    "ref-2": {},
+  }
+
   return {
     id,
     name,
-    orderQty: 120000,
-    gramPerPot: 120,
-    whiteMassKg: 14400,
-    milkReceivedVolume: 17890.909,
+    references,
+    refDestinations,
+    refSentStatus,
+    refPotsLaunched,
+    whiteMassKg: 14800, // 80000 * 0.125 + 40000 * 0.12 = 10000 + 4800 = 14800
+    milkReceivedVolume: 18385.366,
     milkReceptionValue: 33,
     targetValue: 41,
-    tlsVolumes: { tls1: 11000, tls2: 5200, tls3: 1690.909 },
+    tlsVolumes: { tls1: 11000, tls2: 5200, tls3: 2185.366 },
     selectedTLSs: ["TLS1", "TLS2", "TLS3"],
     selectedCFs,
     cfDestinations,
     cfSentStatus,
-    timing: { transferTime: 68.8, osmoseTime: 309.6, powderTime: 108, pastoTime: 172.8, startTime: 0, maturationTime: 360 },
+    timing: { transferTime: 70.7, osmoseTime: 318.2, powderTime: 111, pastoTime: 177.6, startTime: 0, maturationTime: 360 },
     status: "cuve",
-    osmosedVolume: 14400,
+    osmosedVolume: 14800,
     pasteurized: true,
     milkType: "bio",
   }
 }
 
+const initialBatches = () => ({
+  tlc1: [
+    { id: "batch-1", lotNumber: "2605291200", volume: 30000, protein: 33, fat: 38, milkType: "bio" as MilkType }
+  ],
+  tlc2: [
+    { id: "batch-2", lotNumber: "2605291300", volume: 30000, protein: 34, fat: 39, milkType: "fcv3" as MilkType }
+  ],
+  tlc3: [
+    { id: "batch-3", lotNumber: "2605291400", volume: 30000, protein: 32, fat: 37, milkType: "savoie" as MilkType }
+  ],
+  tlc4: [
+    { id: "batch-4", lotNumber: "2605291500", volume: 30000, protein: 35, fat: 40, milkType: "montagne" as MilkType }
+  ]
+})
+
 const initialState: OrderState = {
   orderQty: 120000,
   gramPerPot: 120,
-  whiteMassKg: 14400,
-  milkReceivedVolume: 17890.909,
+  whiteMassKg: 14800,
+  milkReceivedVolume: 18385.366,
   milkReceptionValue: 33,
   targetValue: 41,
-  tlsVolumes: { tls1: 11000, tls2: 5200, tls3: 1690.909 },
+  tlsVolumes: { tls1: 11000, tls2: 5200, tls3: 2185.366 },
   tlcVolumes: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
   tlcRemaining: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
   tlcMilkTypes: { tlc1: "bio", tlc2: "fcv3", tlc3: "savoie", tlc4: "montagne" },
   milkType: "bio",
-  osmosedVolume: 14400,
+  osmosedVolume: 14800,
   pasteurized: true,
   selectedCFs: ["CF4", "CF5", "CF1", "CF2", "CF3", "CF11", "CF12", "CF13", "CF14", "CF15"],
   selectedTLSs: ["TLS1", "TLS2", "TLS3"],
   sentAtia: false,
   sentGrunwald: false,
-  timing: { transferTime: 68.8, osmoseTime: 309.6, powderTime: 108, pastoTime: 172.8, startTime: 0, maturationTime: 360 },
+  timing: { transferTime: 70.7, osmoseTime: 318.2, powderTime: 111, pastoTime: 177.6, startTime: 0, maturationTime: 360 },
   status: "cuve",
   cfDestinations: {},
   cfSentStatus: {},
   productionStartTime: "",
+  
+  tlcBatches: initialBatches(),
+  
   isSimulating: false,
   simulationDone: false,
   simulationProgress: 0,
   simulationStepText: "",
-  simulatedTiming: { transferTime: 68.8, osmoseTime: 309.6, powderTime: 108, pastoTime: 172.8, startTime: 0, maturationTime: 360 },
-  simulatedTlcRemaining: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
+  simulatedTiming: { transferTime: 70.7, osmoseTime: 318.2, powderTime: 111, pastoTime: 177.6, startTime: 0, maturationTime: 360 },
   simulatedMilkReceivedVolume: 0,
   simulatedOsmosedVolume: 0,
 
@@ -187,8 +256,15 @@ const initialState: OrderState = {
   activeCommandId: "cmd-1",
 }
 
-const computeWhiteMass = (orderQty: number, gramPerPot: number) =>
-  Number(((orderQty * gramPerPot) / 1000).toFixed(3))
+export const getTLCStats = (batches: Batch[]) => {
+  if (batches.length === 0) {
+    return { volume: 0, protein: 0, fat: 0 }
+  }
+  const volume = batches.reduce((sum, b) => sum + b.volume, 0)
+  const protein = batches.reduce((sum, b) => sum + b.volume * b.protein, 0) / volume
+  const fat = batches.reduce((sum, b) => sum + b.volume * b.fat, 0) / volume
+  return { volume, protein: Number(protein.toFixed(3)), fat: Number(fat.toFixed(3)) }
+}
 
 const TLS_TANKS = [
   { name: "TLS1", capacity: 11000 },
@@ -299,13 +375,13 @@ const initializeNewCFs = (command: Command) => {
 }
 
 const checkIfDispatched = (command: Command) => {
-  if (command.selectedCFs.length === 0) return
+  if (command.references.length === 0) return
 
   let allDone = true
 
-  command.selectedCFs.forEach((name) => {
-    const dest = command.cfDestinations[name] || "both"
-    const sent = command.cfSentStatus[name] || { atia: false, grunwald: false }
+  command.references.forEach((ref) => {
+    const dest = command.refDestinations?.[ref.id] || "both"
+    const sent = command.refSentStatus?.[ref.id] || { atia: false, grunwald: false }
 
     const needsAtia = dest === "atia" || dest === "both"
     const needsGrunwald = dest === "grunwald" || dest === "both"
@@ -419,8 +495,9 @@ const DEFAULT_MATURATION_MINUTES = 360
 const syncActiveCommandToRoot = (state: OrderState) => {
   const active = state.commands.find(c => c.id === state.activeCommandId)
   if (active) {
-    state.orderQty = active.orderQty
-    state.gramPerPot = active.gramPerPot
+    const totalPots = active.references.reduce((sum, r) => sum + r.potsQty, 0)
+    state.orderQty = totalPots
+    state.gramPerPot = totalPots > 0 ? active.references.reduce((sum, r) => sum + r.potsQty * r.gramPerPot, 0) / totalPots : 120
     state.whiteMassKg = active.whiteMassKg
     state.milkReceivedVolume = active.milkReceivedVolume
     state.milkReceptionValue = active.milkReceptionValue
@@ -435,6 +512,13 @@ const syncActiveCommandToRoot = (state: OrderState) => {
     state.osmosedVolume = active.osmosedVolume
     state.pasteurized = active.pasteurized
     state.milkType = active.milkType as MilkType
+
+    // Update tlcVolumes derived from tlcBatches
+    const keys: (keyof typeof state.tlcVolumes)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+    keys.forEach(k => {
+      const stats = getTLCStats(state.tlcBatches[k])
+      state.tlcVolumes[k] = stats.volume
+    })
   }
 }
 
@@ -443,8 +527,6 @@ const updateActiveCommandFromRoot = (state: OrderState) => {
   if (activeIdx !== -1) {
     state.commands[activeIdx] = {
       ...state.commands[activeIdx],
-      orderQty: state.orderQty,
-      gramPerPot: state.gramPerPot,
       whiteMassKg: state.whiteMassKg,
       milkReceivedVolume: state.milkReceivedVolume,
       milkReceptionValue: state.milkReceptionValue,
@@ -463,9 +545,26 @@ const updateActiveCommandFromRoot = (state: OrderState) => {
   }
 }
 
-const recalculateActiveCommandMetrics = (active: Command) => {
-  active.whiteMassKg = computeWhiteMass(active.orderQty, active.gramPerPot)
-  active.status = active.orderQty > 0 ? "order" : "idle"
+const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => {
+  // 1. Calculate total white mass from product references
+  active.whiteMassKg = active.references.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+  active.status = active.references.length > 0 ? "order" : "idle"
+
+  // 2. Fetch protein levels from TLC batches of target milkType
+  const requiredType = active.milkType || "bio"
+  let totalVol = 0
+  let totalProtWeight = 0
+  const keys: (keyof typeof state.tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+  keys.forEach(k => {
+    state.tlcBatches[k].forEach(b => {
+      if (b.milkType === requiredType) {
+        totalVol += b.volume
+        totalProtWeight += b.volume * b.protein
+      }
+    })
+  })
+  const avgProtein = totalVol > 0 ? totalProtWeight / totalVol : 33.0
+  active.milkReceptionValue = Number(avgProtein.toFixed(3))
 
   if (active.whiteMassKg > 0 && active.milkReceptionValue > 0 && active.targetValue > 0) {
     active.milkReceivedVolume = computeRequiredRawMilk(
@@ -475,6 +574,10 @@ const recalculateActiveCommandMetrics = (active: Command) => {
     )
     active.tlsVolumes = distributeToTLS(active.milkReceivedVolume)
     active.selectedTLSs = selectTLSForVolume(active.milkReceivedVolume)
+  } else {
+    active.milkReceivedVolume = 0
+    active.tlsVolumes = { tls1: 0, tls2: 0, tls3: 0 }
+    active.selectedTLSs = []
   }
 
   active.osmosedVolume = computeOsmosedVolume(
@@ -488,6 +591,9 @@ const recalculateActiveCommandMetrics = (active: Command) => {
     active.selectedCFs = selectCuvesForVolume(active.osmosedVolume)
     initializeNewCFs(active)
     active.status = active.selectedCFs.length > 0 ? "cuve" : active.status
+  } else {
+    active.pasteurized = false
+    active.selectedCFs = []
   }
 
   active.timing.transferTime = computeTransferTime(active.milkReceivedVolume)
@@ -504,15 +610,13 @@ type TLSToSchedule = {
   tlsKey: "tls1" | "tls2" | "tls3"
   rawVolume: number
   osmosedVolume: number
-  gramPerPot: number
   milkType: MilkType
 }
 
-// Global simulation executor (advanced TLS-by-TLS scheduling)
+// Global simulation executor
 export const runMultiCommandSimulation = (
   commands: Command[],
-  tlcInitial: { tlc1: number; tlc2: number; tlc3: number; tlc4: number },
-  tlcMilkTypes: { tlc1: MilkType; tlc2: MilkType; tlc3: MilkType; tlc4: MilkType }
+  tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[] }
 ): MultiCommandSimResults => {
   let timeOsmosisFree = 0
   let timePowderFree = 0
@@ -520,8 +624,13 @@ export const runMultiCommandSimulation = (
   let timeGrunwald = 0
   let timeAtia = 0
   
-  const tlc = { ...tlcInitial }
-  const tlcKeys: (keyof typeof tlc)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+  // Clone TLC batches to consume them during simulation
+  const tlcBatches = {
+    tlc1: tlcBatchesInitial.tlc1.map(b => ({ ...b })),
+    tlc2: tlcBatchesInitial.tlc2.map(b => ({ ...b })),
+    tlc3: tlcBatchesInitial.tlc3.map(b => ({ ...b })),
+    tlc4: tlcBatchesInitial.tlc4.map(b => ({ ...b })),
+  }
   
   const cfAvailableAt: { [tankName: string]: number } = {}
   CF_TANKS.forEach(t => { cfAvailableAt[t.name] = 0 })
@@ -573,7 +682,33 @@ export const runMultiCommandSimulation = (
     activeTLSKeys.forEach((key) => {
       const vol = tlsAlloc[key]
       if (vol > 0) {
-        const osmVol = computeOsmosedVolume(vol, cmd.milkReceptionValue, cmd.targetValue)
+        // Calculate the dynamic protein for this volume of drawn milk
+        let remainingToDraw = vol
+        const requiredType = cmd.milkType || "bio"
+        let totalProtDrawn = 0
+        let actualDrawn = 0
+
+        const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+        for (const k of tlcKeys) {
+          if (remainingToDraw <= 0) break
+          const batches = tlcBatches[k]
+          for (let i = 0; i < batches.length; i++) {
+            if (remainingToDraw <= 0) break
+            const b = batches[i]
+            if (b.milkType === requiredType && b.volume > 0) {
+              const draw = Math.min(b.volume, remainingToDraw)
+              b.volume = Number((b.volume - draw).toFixed(3))
+              remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+              totalProtDrawn += draw * b.protein
+              actualDrawn += draw
+            }
+          }
+          tlcBatches[k] = batches.filter(b => b.volume > 0)
+        }
+
+        const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : cmd.milkReceptionValue
+        const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
+        
         tlsList.push({
           commandId: cmd.id,
           commandIdx: cmdIdx,
@@ -581,8 +716,7 @@ export const runMultiCommandSimulation = (
           tlsKey: key,
           rawVolume: vol,
           osmosedVolume: osmVol,
-          gramPerPot: cmd.gramPerPot,
-          milkType: (cmd.milkType || "bio") as MilkType,
+          milkType: requiredType,
         })
       }
     })
@@ -611,21 +745,7 @@ export const runMultiCommandSimulation = (
   tlsList.forEach((tlsItem) => {
     const TLS_NAME = tlsItem.tlsKey.toUpperCase() as "TLS1" | "TLS2" | "TLS3"
     
-    // 1. TLC Consumption
-    let remainingToDraw = tlsItem.rawVolume
-    const requiredType = tlsItem.milkType
-
-    for (const key of tlcKeys) {
-      if (remainingToDraw <= 0) break
-      if (tlcMilkTypes[key] === requiredType) {
-        const draw = Math.min(tlc[key], remainingToDraw)
-        tlc[key] = Number((tlc[key] - draw).toFixed(3))
-        remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-      }
-    }
-
-    // 2. Schedule Transfer TLC -> TLS
-    // Starts when physical TLS tank becomes empty from previous uses
+    // 1. Schedule Transfer TLC -> TLS
     const transferStart = tlsAvailableAt[TLS_NAME]
     const transferDuration = computeTransferTime(tlsItem.rawVolume)
     const transferEnd = transferStart + transferDuration
@@ -635,8 +755,7 @@ export const runMultiCommandSimulation = (
     }
     cmdTransEnd[tlsItem.commandId] = transferEnd
 
-    // 3. Schedule Osmosis
-    // Starts when transfer ends and the Osmosis machine is free
+    // 2. Schedule Osmosis
     const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
     const cmd = commands.find(c => c.id === tlsItem.commandId)!
     const osmoseDuration = computeOsmoseTime(tlsItem.rawVolume, cmd.milkReceptionValue, cmd.targetValue)
@@ -664,8 +783,7 @@ export const runMultiCommandSimulation = (
       color: getCommandColor(tlsItem.commandIdx, "osmose"),
     })
 
-    // 4. Schedule Powdering & Pasteurization (chained without delay!)
-    // We select which CF tanks we will fill for this TLS's osmosed volume
+    // 3. Schedule Powdering & Pasteurization
     const cfTanksToFill: string[] = []
     const cfFillVolumes: { [cfName: string]: number } = {}
     let remTLSVol = tlsItem.osmosedVolume
@@ -687,15 +805,9 @@ export const runMultiCommandSimulation = (
       }
     })
 
-    // Compute durations
     const powderDuration = computePowderTime(tlsItem.osmosedVolume)
     const pastoDuration = computePastoTime(tlsItem.osmosedVolume)
 
-    // Pasteurization can start only when:
-    // A. Osmosis of this TLS is complete: t >= osmoseEnd
-    // B. Pasteurizer is free: t >= timePastoFree
-    // C. Powder machine is free: t - powderDuration >= timePowderFree => t >= timePowderFree + powderDuration
-    // D. All selected CFs we fill are empty and clean: t >= max(cfAvailableAt[cf])
     let cfReadyTime = 0
     cfTanksToFill.forEach(cfName => {
       cfReadyTime = Math.max(cfReadyTime, cfAvailableAt[cfName] || 0)
@@ -708,10 +820,9 @@ export const runMultiCommandSimulation = (
     const powderStart = pastoStart - powderDuration
     const pastoEnd = pastoStart + pastoDuration
 
-    // Update machines
-    timePowderFree = pastoStart // powder finished when pasto started
+    timePowderFree = pastoStart
     timePastoFree = pastoEnd
-    tlsAvailableAt[TLS_NAME] = pastoEnd // physical TLS tank empty when pasto ends
+    tlsAvailableAt[TLS_NAME] = pastoEnd
 
     if (cmdPastoStart[tlsItem.commandId] === undefined) {
       cmdPastoStart[tlsItem.commandId] = powderStart
@@ -726,7 +837,7 @@ export const runMultiCommandSimulation = (
       color: getCommandColor(tlsItem.commandIdx, "pasto"),
     })
 
-    // 5. Maturation (starts immediately after pasteurization ends)
+    // 4. Schedule Maturation
     const maturationStart = pastoEnd
     const maturationEnd = pastoEnd + 360
 
@@ -738,87 +849,17 @@ export const runMultiCommandSimulation = (
       color: getCommandColor(tlsItem.commandIdx, "maturation"),
     })
 
-    // 6. Packaging for these CF tanks
-    cfTanksToFill.forEach(cfName => {
-      const fillVol = cfFillVolumes[cfName]
-      const dest = commandCFSelectedList[tlsItem.commandId].includes(cfName) 
-        ? (commands.find(c => c.id === tlsItem.commandId)?.cfDestinations?.[cfName] || "both") 
-        : "both"
-      const pots = (fillVol * 1000) / tlsItem.gramPerPot
-
-      let pkgStart = 0
-      let pkgDuration = 0
-      let emptyTime = 0
-
-      if (dest === "grunwald") {
-        pkgStart = Math.max(maturationEnd, timeGrunwald)
-        pkgDuration = (pots / 10000) * 60
-        emptyTime = pkgStart + pkgDuration
-        timeGrunwald = emptyTime
-
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${cfName}-pkg-grun`,
-          label: `${tlsItem.commandName} : Conditionnement ${cfName} (GRUN)`,
-          startMinute: pkgStart,
-          durationMinutes: pkgDuration,
-          color: getCommandColor(tlsItem.commandIdx, "packaging_grun"),
-        })
-      } else if (dest === "atia") {
-        pkgStart = Math.max(maturationEnd, timeAtia)
-        pkgDuration = (pots / 3500) * 60
-        emptyTime = pkgStart + pkgDuration
-        timeAtia = emptyTime
-
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${cfName}-pkg-atia`,
-          label: `${tlsItem.commandName} : Conditionnement ${cfName} (ATIA)`,
-          startMinute: pkgStart,
-          durationMinutes: pkgDuration,
-          color: getCommandColor(tlsItem.commandIdx, "packaging_atia"),
-        })
-      } else { // both
-        pkgStart = Math.max(maturationEnd, Math.max(timeGrunwald, timeAtia))
-        pkgDuration = (pots / 13500) * 60
-        emptyTime = pkgStart + pkgDuration
-        timeGrunwald = emptyTime
-        timeAtia = emptyTime
-
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${cfName}-pkg-both`,
-          label: `${tlsItem.commandName} : Conditionnement ${cfName} (ATIA+GRUN)`,
-          startMinute: pkgStart,
-          durationMinutes: pkgDuration,
-          color: getCommandColor(tlsItem.commandIdx, "packaging_grun"),
-        })
-      }
-
-      ganttTasks.push({
-        key: `${tlsItem.commandId}-${cfName}-wash`,
-        label: `${tlsItem.commandName} : Lavage ${cfName}`,
-        startMinute: emptyTime,
-        durationMinutes: 30,
-        color: "#cbd5e1",
-      })
-
-      cfAvailableAt[cfName] = emptyTime + 30
-      
-      if (cmdMaxEnd[tlsItem.commandId] === undefined || emptyTime > cmdMaxEnd[tlsItem.commandId]) {
-        cmdMaxEnd[tlsItem.commandId] = emptyTime
-      }
-    })
-
     if (cmdMinStart[tlsItem.commandId] === undefined) {
       cmdMinStart[tlsItem.commandId] = transferStart
     }
   })
 
-  // Finalize command results timelines
+  // Finalize command results timelines with intermediate states
   commands.forEach(cmd => {
-    const V_cru = cmd.milkReceivedVolume
-    if (V_cru <= 0) return
+    if (cmd.references.length === 0) return
 
     const tStart = cmdMinStart[cmd.id] || 0
-    const tEnd = cmdMaxEnd[cmd.id] || (cmdPastoEnd[cmd.id] + 360)
+    const tEndMaturation = (cmdPastoEnd[cmd.id] || 0) + 360
 
     commandsResults[cmd.id] = {
       id: cmd.id,
@@ -832,13 +873,113 @@ export const runMultiCommandSimulation = (
       pastoStart: cmdPastoStart[cmd.id] || 0,
       pastoEnd: cmdPastoEnd[cmd.id] || 0,
       maturationStart: cmdPastoEnd[cmd.id] || 0,
-      maturationEnd: cmdPastoEnd[cmd.id] + 360,
-      packagingStart: cmdPastoEnd[cmd.id] + 360,
-      packagingEnd: tEnd,
-      packagingAtiaDuration: timeAtia,
-      packagingGrunDuration: timeGrunwald,
-      totalDuration: tEnd,
+      maturationEnd: tEndMaturation,
+      packagingStart: tEndMaturation,
+      packagingEnd: tEndMaturation,
+      packagingAtiaDuration: 0,
+      packagingGrunDuration: 0,
+      totalDuration: tEndMaturation,
     }
+  })
+
+  // 5. Schedule Reference Packaging sequentially per command after maturation is complete
+  commands.forEach((cmd, cmdIdx) => {
+    const cmdRes = commandsResults[cmd.id]
+    if (!cmdRes) return
+    const packagingStart = cmdRes.maturationEnd
+
+    cmd.references.forEach((ref) => {
+      const dest = cmd.refDestinations?.[ref.id] || "both"
+      const customPots = cmd.refPotsLaunched?.[ref.id]
+      const potsDefault = ref.potsQty
+
+      let potsAtia = 0
+      let potsGrun = 0
+
+      if (dest === "atia") {
+        potsAtia = customPots?.atia !== undefined ? customPots.atia : potsDefault
+      } else if (dest === "grunwald") {
+        potsGrun = customPots?.grunwald !== undefined ? customPots.grunwald : potsDefault
+      } else { // both
+        potsAtia = customPots?.atia !== undefined ? customPots.atia : potsDefault * (3500 / 13500)
+        potsGrun = customPots?.grunwald !== undefined ? customPots.grunwald : potsDefault * (10000 / 13500)
+      }
+
+      let pkgStart = 0
+      let pkgDuration = 0
+      let emptyTime = 0
+
+      if (dest === "grunwald") {
+        pkgStart = Math.max(packagingStart, timeGrunwald)
+        pkgDuration = (potsGrun / 10000) * 60
+        emptyTime = pkgStart + pkgDuration
+        timeGrunwald = emptyTime
+
+        ganttTasks.push({
+          key: `${cmd.id}-${ref.id}-pkg-grun`,
+          label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
+          startMinute: pkgStart,
+          durationMinutes: pkgDuration,
+          color: getCommandColor(cmdIdx, "packaging_grun"),
+        })
+      } else if (dest === "atia") {
+        pkgStart = Math.max(packagingStart, timeAtia)
+        pkgDuration = (potsAtia / 3500) * 60
+        emptyTime = pkgStart + pkgDuration
+        timeAtia = emptyTime
+
+        ganttTasks.push({
+          key: `${cmd.id}-${ref.id}-pkg-atia`,
+          label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
+          startMinute: pkgStart,
+          durationMinutes: pkgDuration,
+          color: getCommandColor(cmdIdx, "packaging_atia"),
+        })
+      } else { // both
+        const atiaStart = Math.max(packagingStart, timeAtia)
+        const grunStart = Math.max(packagingStart, timeGrunwald)
+        
+        const atiaDuration = (potsAtia / 3500) * 60
+        const grunDuration = (potsGrun / 10000) * 60
+        
+        const atiaEnd = atiaStart + atiaDuration
+        const grunEnd = grunStart + grunDuration
+        
+        timeAtia = atiaEnd
+        timeGrunwald = grunEnd
+        pkgStart = Math.min(atiaStart, grunStart)
+        emptyTime = Math.max(atiaEnd, grunEnd)
+
+        ganttTasks.push({
+          key: `${cmd.id}-${ref.id}-pkg-both`,
+          label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
+          startMinute: pkgStart,
+          durationMinutes: emptyTime - pkgStart,
+          color: getCommandColor(cmdIdx, "packaging_grun"),
+        })
+      }
+
+      if (cmdMaxEnd[cmd.id] === undefined || emptyTime > cmdMaxEnd[cmd.id]) {
+        cmdMaxEnd[cmd.id] = emptyTime
+      }
+    })
+
+    // Group CF tank washing tasks at the end of reference packaging
+    const cmdPkgEnd = cmdMaxEnd[cmd.id] || cmdRes.maturationEnd
+    cmdRes.packagingEnd = cmdPkgEnd
+    cmdRes.totalDuration = cmdPkgEnd
+
+    const selectedCFs = commandCFSelectedList[cmd.id]
+    selectedCFs.forEach(cfName => {
+      ganttTasks.push({
+        key: `${cmd.id}-${cfName}-wash`,
+        label: `${cmd.name} : Lavage ${cfName}`,
+        startMinute: cmdPkgEnd,
+        durationMinutes: 30,
+        color: "#cbd5e1",
+      })
+      cfAvailableAt[cfName] = cmdPkgEnd + 30
+    })
   })
 
   const totalDurationMinutes = Math.max(
@@ -849,17 +990,15 @@ export const runMultiCommandSimulation = (
     ...Object.values(tlsAvailableAt)
   )
 
-  // Post-process ganttTasks to group washings and conditionings as requested
+  // Post-process ganttTasks to group washings and packaging rows compactly
   const finalGanttTasks: GanttTask[] = []
-
-  // 1. Keep transfer, osmose, pasto, maturation as they are
   ganttTasks.forEach(task => {
     if (!task.key.includes("-pkg-") && !task.key.endsWith("-wash")) {
       finalGanttTasks.push(task)
     }
   })
 
-  // 2. Combine packaging tasks per command
+  // Group Packaging by Command
   commands.forEach((cmd, cmdIdx) => {
     const pkgTasks = ganttTasks.filter(t => t.key.startsWith(`${cmd.id}-`) && t.key.includes("-pkg-"))
     if (pkgTasks.length > 0) {
@@ -867,7 +1006,6 @@ export const runMultiCommandSimulation = (
       const endMax = Math.max(...pkgTasks.map(t => t.startMinute + t.durationMinutes))
       const duration = endMax - startMin
 
-      // Determine machines from keys
       const destinations = new Set<string>()
       pkgTasks.forEach(t => {
         if (t.key.endsWith("-pkg-grun")) destinations.add("GRUN")
@@ -889,7 +1027,7 @@ export const runMultiCommandSimulation = (
     }
   })
 
-  // 3. Combine all washing tasks across all commands into a single global row
+  // Group Washing tasks in a single global row
   const allWashTasks = ganttTasks.filter(t => t.key.endsWith("-wash"))
   if (allWashTasks.length > 0) {
     const segments = allWashTasks.map(t => ({
@@ -915,7 +1053,7 @@ export const runMultiCommandSimulation = (
   return {
     totalDurationMinutes,
     commandsResults,
-    tlcRemaining: tlc,
+    tlcRemainingBatches: tlcBatches,
     ganttTasks: finalGanttTasks,
   }
 }
@@ -934,7 +1072,6 @@ const orderSlice = createSlice({
       state.simulationDone = false
     },
     deleteCommand(state, action: PayloadAction<string>) {
-      // Keep at least one command
       if (state.commands.length <= 1) return
       
       const toDelete = action.payload
@@ -955,54 +1092,146 @@ const orderSlice = createSlice({
       const cmd = state.commands.find(c => c.id === id)
       if (cmd) {
         cmd.milkType = milkType
+        recalculateActiveCommandMetrics(state, cmd)
         if (state.activeCommandId === id) {
           state.milkType = milkType
         }
       }
+      syncActiveCommandToRoot(state)
       state.simulationDone = false
     },
     
-    // Command-specific setters (modifying the active command)
-    setOrderQty(state, action: PayloadAction<number>) {
-      state.orderQty = action.payload
-      updateActiveCommandFromRoot(state)
-      
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        recalculateActiveCommandMetrics(active)
+    // Product Reference Reducers
+    addReference(state, action: PayloadAction<{ cmdId: string }>) {
+      const { cmdId } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd) {
+        const nextId = `ref-${Date.now()}`
+        cmd.references.push({
+          id: nextId,
+          name: `Réf ${cmd.references.length + 1}`,
+          potsQty: 20000,
+          gramPerPot: 120
+        })
+        cmd.refDestinations[nextId] = "both"
+        cmd.refSentStatus[nextId] = { atia: false, grunwald: false }
+        cmd.refPotsLaunched[nextId] = {}
+        recalculateActiveCommandMetrics(state, cmd)
         syncActiveCommandToRoot(state)
       }
       state.simulationDone = false
     },
-    setGramPerPot(state, action: PayloadAction<number>) {
-      state.gramPerPot = action.payload
-      updateActiveCommandFromRoot(state)
-      
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        recalculateActiveCommandMetrics(active)
+    updateReference(
+      state,
+      action: PayloadAction<{ cmdId: string; refId: string; fields: Partial<ProductReference> }>
+    ) {
+      const { cmdId, refId, fields } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd) {
+        const ref = cmd.references.find(r => r.id === refId)
+        if (ref) {
+          Object.assign(ref, fields)
+          recalculateActiveCommandMetrics(state, cmd)
+          syncActiveCommandToRoot(state)
+        }
+      }
+      state.simulationDone = false
+    },
+    deleteReference(state, action: PayloadAction<{ cmdId: string; refId: string }>) {
+      const { cmdId, refId } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd && cmd.references.length > 1) {
+        cmd.references = cmd.references.filter(r => r.id !== refId)
+        delete cmd.refDestinations[refId]
+        delete cmd.refSentStatus[refId]
+        delete cmd.refPotsLaunched[refId]
+        recalculateActiveCommandMetrics(state, cmd)
         syncActiveCommandToRoot(state)
       }
       state.simulationDone = false
     },
-    setMilkReceptionValue(state, action: PayloadAction<number>) {
-      state.milkReceptionValue = action.payload
-      updateActiveCommandFromRoot(state)
-      
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        recalculateActiveCommandMetrics(active)
+
+    // Reference packaging destination and launch controllers
+    setRefDestination(state, action: PayloadAction<{ cmdId: string; refId: string; destination: "atia" | "grunwald" | "both" }>) {
+      const { cmdId, refId, destination } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd) {
+        if (!cmd.refDestinations) cmd.refDestinations = {}
+        cmd.refDestinations[refId] = destination
+        
+        if (!cmd.refSentStatus) cmd.refSentStatus = {}
+        if (!cmd.refSentStatus[refId]) {
+          cmd.refSentStatus[refId] = { atia: false, grunwald: false }
+        }
+        checkIfDispatched(cmd)
         syncActiveCommandToRoot(state)
       }
       state.simulationDone = false
     },
+    setRefPotsLaunched(state, action: PayloadAction<{ cmdId: string; refId: string; atia?: number; grunwald?: number }>) {
+      const { cmdId, refId, atia, grunwald } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd) {
+        if (!cmd.refPotsLaunched) cmd.refPotsLaunched = {}
+        if (!cmd.refPotsLaunched[refId]) cmd.refPotsLaunched[refId] = {}
+        if (atia !== undefined) cmd.refPotsLaunched[refId].atia = atia
+        if (grunwald !== undefined) cmd.refPotsLaunched[refId].grunwald = grunwald
+        syncActiveCommandToRoot(state)
+      }
+      state.simulationDone = false
+    },
+    launchRefToMachine(state, action: PayloadAction<{ cmdId: string; refId: string; machine: "atia" | "grunwald" }>) {
+      const { cmdId, refId, machine } = action.payload
+      const cmd = state.commands.find(c => c.id === cmdId)
+      if (cmd) {
+        if (!cmd.refSentStatus) cmd.refSentStatus = {}
+        if (!cmd.refSentStatus[refId]) {
+          cmd.refSentStatus[refId] = { atia: false, grunwald: false }
+        }
+        cmd.refSentStatus[refId][machine] = true
+        checkIfDispatched(cmd)
+        syncActiveCommandToRoot(state)
+      }
+    },
+    
+    // TLC Batch Reducers
+    addBatch(state, action: PayloadAction<{ tank: "tlc1" | "tlc2" | "tlc3" | "tlc4"; batch: Omit<Batch, "id"> }>) {
+      const { tank, batch } = action.payload
+      const nextId = `batch-${Date.now()}`
+      
+      // Enforce raw milk mixture rule: must have the same milkType as current batches, if not empty
+      const currentType = state.tlcBatches[tank].length > 0 ? state.tlcBatches[tank][0].milkType : null
+      if (currentType && currentType !== batch.milkType) {
+        return // mix violation
+      }
+
+      state.tlcBatches[tank].push({
+        id: nextId,
+        ...batch
+      })
+      
+      // Recalculate metrics for all commands because raw milk properties changed
+      state.commands.forEach(cmd => recalculateActiveCommandMetrics(state, cmd))
+      syncActiveCommandToRoot(state)
+      state.simulationDone = false
+    },
+    deleteBatch(state, action: PayloadAction<{ tank: "tlc1" | "tlc2" | "tlc3" | "tlc4"; batchId: string }>) {
+      const { tank, batchId } = action.payload
+      state.tlcBatches[tank] = state.tlcBatches[tank].filter(b => b.id !== batchId)
+      
+      // Recalculate metrics for all commands
+      state.commands.forEach(cmd => recalculateActiveCommandMetrics(state, cmd))
+      syncActiveCommandToRoot(state)
+      state.simulationDone = false
+    },
+
     setTargetValue(state, action: PayloadAction<number>) {
       state.targetValue = action.payload
       updateActiveCommandFromRoot(state)
       
       const active = state.commands.find(c => c.id === state.activeCommandId)
       if (active) {
-        recalculateActiveCommandMetrics(active)
+        recalculateActiveCommandMetrics(state, active)
         syncActiveCommandToRoot(state)
       }
       state.simulationDone = false
@@ -1048,61 +1277,6 @@ const orderSlice = createSlice({
       }
       state.simulationDone = false
     },
-    setCFDestination(state, action: PayloadAction<{ name: string; destination: "atia" | "grunwald" | "both" }>) {
-      const { name, destination } = action.payload
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        if (!active.cfDestinations) active.cfDestinations = {}
-        active.cfDestinations[name] = destination
-        
-        if (!active.cfSentStatus) active.cfSentStatus = {}
-        if (!active.cfSentStatus[name]) {
-          active.cfSentStatus[name] = { atia: false, grunwald: false }
-        }
-        checkIfDispatched(active)
-        syncActiveCommandToRoot(state)
-      }
-      state.simulationDone = false
-    },
-    setAllCFDestinations(state, action: PayloadAction<"atia" | "grunwald" | "both">) {
-      const destination = action.payload
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        if (!active.cfDestinations) active.cfDestinations = {}
-        const targets = active.selectedCFs.length > 0 ? active.selectedCFs : CF_TANKS.map(t => t.name)
-        targets.forEach((name) => {
-          active.cfDestinations[name] = destination
-          if (!active.cfSentStatus) active.cfSentStatus = {}
-          if (!active.cfSentStatus[name]) {
-            active.cfSentStatus[name] = { atia: false, grunwald: false }
-          }
-        })
-        checkIfDispatched(active)
-        syncActiveCommandToRoot(state)
-      }
-      state.simulationDone = false
-    },
-    launchCFToMachine(state, action: PayloadAction<{ name: string; machine: "atia" | "grunwald" }>) {
-      const { name, machine } = action.payload
-      const active = state.commands.find(c => c.id === state.activeCommandId)
-      if (active) {
-        if (!active.cfSentStatus) active.cfSentStatus = {}
-        if (!active.cfSentStatus[name]) {
-          active.cfSentStatus[name] = { atia: false, grunwald: false }
-        }
-        active.cfSentStatus[name][machine] = true
-        checkIfDispatched(active)
-        syncActiveCommandToRoot(state)
-      }
-    },
-    setTLCVolume(state, action: PayloadAction<{ tank: keyof typeof state.tlcVolumes; volume: number }>) {
-      state.tlcVolumes[action.payload.tank] = action.payload.volume
-      state.simulationDone = false
-    },
-    setTLCMilkType(state, action: PayloadAction<{ tank: "tlc1" | "tlc2" | "tlc3" | "tlc4"; milkType: MilkType }>) {
-      state.tlcMilkTypes[action.payload.tank] = action.payload.milkType
-      state.simulationDone = false
-    },
     setProductionStartTime(state, action: PayloadAction<string>) {
       state.productionStartTime = action.payload
       state.simulationDone = false
@@ -1123,11 +1297,9 @@ const orderSlice = createSlice({
       state.isSimulating = false
       state.simulationDone = true
       
-      // Run the detailed timeline optimizer
-      const results = runMultiCommandSimulation(state.commands, state.tlcVolumes, state.tlcMilkTypes)
+      const results = runMultiCommandSimulation(state.commands, state.tlcBatches)
       state.simulationResults = results
       
-      // Keep root outputs in sync with active command or overall synthesis for backwards compatibility
       const active = state.commands.find(c => c.id === state.activeCommandId)
       if (active && results.commandsResults[active.id]) {
         const ar = results.commandsResults[active.id]
@@ -1140,7 +1312,6 @@ const orderSlice = createSlice({
           maturationTime: ar.maturationEnd - ar.maturationStart,
         }
       }
-      state.simulatedTlcRemaining = results.tlcRemaining
       state.simulatedMilkReceivedVolume = state.commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
       state.simulatedOsmosedVolume = state.commands.reduce((t, c) => t + c.osmosedVolume, 0)
     },
@@ -1155,18 +1326,18 @@ export const {
   deleteCommand,
   setActiveCommand,
   setCommandMilkType,
-  setOrderQty,
-  setGramPerPot,
-  setMilkReceptionValue,
+  addReference,
+  updateReference,
+  deleteReference,
+  setRefDestination,
+  setRefPotsLaunched,
+  launchRefToMachine,
+  addBatch,
+  deleteBatch,
   setTargetValue,
   autoFillTLS,
   toggleTLSSelection,
   toggleCuveSelection,
-  setCFDestination,
-  setAllCFDestinations,
-  launchCFToMachine,
-  setTLCVolume,
-  setTLCMilkType,
   setProductionStartTime,
   startSimulation,
   updateSimulationProgress,

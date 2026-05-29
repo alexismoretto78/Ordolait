@@ -181,7 +181,8 @@ export default function Simulation() {
                 {TLC_TANKS.map((tank) => {
                   const key = tank.name.toLowerCase() as keyof typeof tlcVolumes
                   const initial = tlcVolumes[key]
-                  const remaining = simulationResults.tlcRemaining[key]
+                  const remainingBatches = simulationResults.tlcRemainingBatches?.[key] || []
+                  const remaining = remainingBatches.reduce((sum, b) => sum + b.volume, 0)
                   const delta = initial - remaining
                   const pct = Math.max(0, (remaining / tank.capacity) * 100)
                   const currentType = tlcMilkTypes[key] || "bio"
