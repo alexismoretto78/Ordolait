@@ -72,11 +72,11 @@ export default function Cuve() {
                       {tank.name}
                     </span>
                     <span className="cuve-capacity">
-                      Capacité : {tank.capacity} L
+                      <span className="hide-mobile">Capacité : </span>{tank.capacity} L
                     </span>
                     {selected && (
                       <span className="cuve-volume">
-                        Vol: {allocatedVolumes[tank.name].toFixed(1)} L
+                        <span className="hide-mobile">Vol : </span>{allocatedVolumes[tank.name].toFixed(0)} L
                       </span>
                     )}
                   </div>

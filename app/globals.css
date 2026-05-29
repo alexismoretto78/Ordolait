@@ -940,6 +940,32 @@ body {
   .sim-summary-card {
     padding: 14px;
   }
+
+  .cuve-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+
+  .cuve-card {
+    padding: 8px 4px;
+    gap: 4px;
+  }
+
+  .cuve-title {
+    font-size: 0.8rem;
+  }
+
+  .cuve-capacity {
+    font-size: 0.65rem;
+  }
+
+  .cuve-volume {
+    font-size: 0.7rem;
+  }
+
+  .hide-mobile {
+    display: none;
+  }
 }
 
 /* Small Mobile Screens (< 480px) */
@@ -963,25 +989,32 @@ body {
   }
 
   .cuve-grid {
-    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
   }
 
   .cuve-card {
-    padding: 10px 6px;
-    gap: 6px;
+    padding: 6px 2px;
+    gap: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .cuve-card.active::before {
+    height: 3px;
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
   }
 
   .cuve-title {
-    font-size: 0.85rem;
-  }
-
-  .cuve-capacity {
     font-size: 0.65rem;
   }
 
+  .cuve-capacity {
+    font-size: 0.55rem;
+  }
+
   .cuve-volume {
-    font-size: 0.75rem;
+    font-size: 0.6rem;
   }
 
   .launch-grid {
