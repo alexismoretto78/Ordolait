@@ -12,7 +12,8 @@ export default function Simulation() {
     simulationProgress,
     simulationStepText,
     simulationResults,
-    tlcVolumes
+    tlcVolumes,
+    tlcMilkTypes
   } = useSelector((state: RootState) => state.order)
 
   const totalDurationMinutes = simulationResults?.totalDurationMinutes || 0
@@ -39,6 +40,30 @@ export default function Simulation() {
 
   const getCalendarTime = (minutes: number) => {
     return formatDateTime(new Date(startDate.getTime() + minutes * 60 * 1000))
+  }
+
+  // Style configurations per Milk Type
+  const milkTypeColors = {
+    bio: {
+      label: "🌱 Bio",
+      gradient: "linear-gradient(180deg, #34d399 0%, #10b981 100%)",
+      color: "var(--success)"
+    },
+    fcv3: {
+      label: "🧪 FCV3",
+      gradient: "linear-gradient(180deg, #60a5fa 0%, #2563eb 100%)",
+      color: "var(--primary)"
+    },
+    savoie: {
+      label: "🏔️ Savoie",
+      gradient: "linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%)",
+      color: "var(--warning)"
+    },
+    montagne: {
+      label: "⛰️ Montagne",
+      gradient: "linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%)",
+      color: "var(--violet)"
+    },
   }
 
   return (
@@ -159,20 +184,47 @@ export default function Simulation() {
                   const remaining = simulationResults.tlcRemaining[key]
                   const delta = initial - remaining
                   const pct = Math.max(0, (remaining / tank.capacity) * 100)
+                  const currentType = tlcMilkTypes[key] || "bio"
+                  const config = milkTypeColors[currentType]
 
                   return (
-                    <div key={tank.name} className="tlc-tank-card">
-                      <span className="tlc-tank-name">{tank.name}</span>
+                    <div key={tank.name} className="tlc-tank-card" style={{ borderColor: config.color }}>
+                      <span className="tlc-tank-name" style={{ fontWeight: 700 }}>{tank.name}</span>
                       
+                      {/* Milk Type Tag */}
+                      <span style={{ fontSize: "0.7rem", color: config.color, fontWeight: 700, background: "rgba(255,255,255,0.7)", padding: "2px 6px", borderRadius: "8px", border: `1px solid ${config.color}`, marginBottom: 8, whiteSpace: "nowrap" }}>
+                        {config.label}
+                      </span>
+
                       {/* Visual Cylinder */}
-                      <div className="tlc-tank-cylinder" title={`Remplissage : ${pct.toFixed(0)}%`}>
-                        <div className="tlc-tank-fluid" style={{ height: `${pct}%` }}></div>
+                      <div className="tlc-tank-cylinder" title={`Remplissage : ${pct.toFixed(0)}%`} style={{ border: `2px solid #cbd5e1`, overflow: "hidden", display: "flex", alignItems: "flex-end" }}>
+                        <div 
+                          className="tlc-tank-fluid" 
+                          style={{ 
+                            height: `${pct}%`, 
+                            background: config.gradient,
+                            width: "100%",
+                            position: "relative",
+                            transition: "height 0.5s ease-out" 
+                          }}
+                        >
+                          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: "rgba(255,255,255,0.3)" }} />
+                        </div>
                       </div>
 
                       {/* Numbers */}
-                      <span className="tlc-tank-volume-text">{remaining.toFixed(0)} L</span>
-                      {delta > 0 && (
-                        <span className="tlc-tank-volume-delta" style={{ color: "var(--danger)" }}>-{delta.toFixed(0)} L</span>
+                      <span className="tlc-tank-volume-text" style={{ fontWeight: 700 }}>
+                        {remaining.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
+                      </span>
+                      
+                      {delta > 0 ? (
+                        <span className="tlc-tank-volume-delta" style={{ color: "var(--danger)", fontSize: "0.75rem", fontWeight: 600 }}>
+                          -{delta.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", fontStyle: "italic" }}>
+                          Inutilisé
+                        </span>
                       )}
                     </div>
                   )

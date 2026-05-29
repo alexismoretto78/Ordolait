@@ -27,6 +27,7 @@ export type Command = {
   status: "idle" | "order" | "osmosis" | "pasto" | "cuve" | "dispatched"
   osmosedVolume: number
   pasteurized: boolean
+  milkType: MilkType
 }
 
 export type CommandSimResult = {
@@ -49,12 +50,20 @@ export type CommandSimResult = {
   totalDuration: number
 }
 
+export type GanttSegment = {
+  startMinute: number
+  durationMinutes: number
+  color: string
+  label?: string
+}
+
 export type GanttTask = {
   key: string
   label: string
   startMinute: number
   durationMinutes: number
   color: string
+  segments?: GanttSegment[]
 }
 
 export type MultiCommandSimResults = {
@@ -63,6 +72,8 @@ export type MultiCommandSimResults = {
   tlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
   ganttTasks: GanttTask[]
 }
+
+export type MilkType = "bio" | "fcv3" | "savoie" | "montagne"
 
 export type OrderState = {
   // Shared root fallbacks (for backward compatibility)
@@ -75,6 +86,8 @@ export type OrderState = {
   tlsVolumes: { tls1: number; tls2: number; tls3: number }
   tlcVolumes: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
   tlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
+  tlcMilkTypes: { tlc1: MilkType; tlc2: MilkType; tlc3: MilkType; tlc4: MilkType }
+  milkType: MilkType
   osmosedVolume: number
   pasteurized: boolean
   selectedCFs: string[]
@@ -133,6 +146,7 @@ const initialCommand = (id: string, name: string): Command => {
     status: "cuve",
     osmosedVolume: 14400,
     pasteurized: true,
+    milkType: "bio",
   }
 }
 
@@ -146,6 +160,8 @@ const initialState: OrderState = {
   tlsVolumes: { tls1: 11000, tls2: 5200, tls3: 1690.909 },
   tlcVolumes: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
   tlcRemaining: { tlc1: 30000, tlc2: 30000, tlc3: 30000, tlc4: 30000 },
+  tlcMilkTypes: { tlc1: "bio", tlc2: "fcv3", tlc3: "savoie", tlc4: "montagne" },
+  milkType: "bio",
   osmosedVolume: 14400,
   pasteurized: true,
   selectedCFs: ["CF4", "CF5", "CF1", "CF2", "CF3", "CF11", "CF12", "CF13", "CF14", "CF15"],
@@ -418,6 +434,7 @@ const syncActiveCommandToRoot = (state: OrderState) => {
     state.status = active.status
     state.osmosedVolume = active.osmosedVolume
     state.pasteurized = active.pasteurized
+    state.milkType = active.milkType as MilkType
   }
 }
 
@@ -441,6 +458,7 @@ const updateActiveCommandFromRoot = (state: OrderState) => {
       status: state.status,
       osmosedVolume: state.osmosedVolume,
       pasteurized: state.pasteurized,
+      milkType: state.milkType,
     }
   }
 }
@@ -487,12 +505,14 @@ type TLSToSchedule = {
   rawVolume: number
   osmosedVolume: number
   gramPerPot: number
+  milkType: MilkType
 }
 
 // Global simulation executor (advanced TLS-by-TLS scheduling)
 export const runMultiCommandSimulation = (
   commands: Command[],
-  tlcInitial: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
+  tlcInitial: { tlc1: number; tlc2: number; tlc3: number; tlc4: number },
+  tlcMilkTypes: { tlc1: MilkType; tlc2: MilkType; tlc3: MilkType; tlc4: MilkType }
 ): MultiCommandSimResults => {
   let timeOsmosisFree = 0
   let timePowderFree = 0
@@ -562,6 +582,7 @@ export const runMultiCommandSimulation = (
           rawVolume: vol,
           osmosedVolume: osmVol,
           gramPerPot: cmd.gramPerPot,
+          milkType: (cmd.milkType || "bio") as MilkType,
         })
       }
     })
@@ -592,11 +613,15 @@ export const runMultiCommandSimulation = (
     
     // 1. TLC Consumption
     let remainingToDraw = tlsItem.rawVolume
+    const requiredType = tlsItem.milkType
+
     for (const key of tlcKeys) {
       if (remainingToDraw <= 0) break
-      const draw = Math.min(tlc[key], remainingToDraw)
-      tlc[key] = Number((tlc[key] - draw).toFixed(3))
-      remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+      if (tlcMilkTypes[key] === requiredType) {
+        const draw = Math.min(tlc[key], remainingToDraw)
+        tlc[key] = Number((tlc[key] - draw).toFixed(3))
+        remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+      }
     }
 
     // 2. Schedule Transfer TLC -> TLS
@@ -824,11 +849,74 @@ export const runMultiCommandSimulation = (
     ...Object.values(tlsAvailableAt)
   )
 
+  // Post-process ganttTasks to group washings and conditionings as requested
+  const finalGanttTasks: GanttTask[] = []
+
+  // 1. Keep transfer, osmose, pasto, maturation as they are
+  ganttTasks.forEach(task => {
+    if (!task.key.includes("-pkg-") && !task.key.endsWith("-wash")) {
+      finalGanttTasks.push(task)
+    }
+  })
+
+  // 2. Combine packaging tasks per command
+  commands.forEach((cmd, cmdIdx) => {
+    const pkgTasks = ganttTasks.filter(t => t.key.startsWith(`${cmd.id}-`) && t.key.includes("-pkg-"))
+    if (pkgTasks.length > 0) {
+      const startMin = Math.min(...pkgTasks.map(t => t.startMinute))
+      const endMax = Math.max(...pkgTasks.map(t => t.startMinute + t.durationMinutes))
+      const duration = endMax - startMin
+
+      // Determine machines from keys
+      const destinations = new Set<string>()
+      pkgTasks.forEach(t => {
+        if (t.key.endsWith("-pkg-grun")) destinations.add("GRUN")
+        else if (t.key.endsWith("-pkg-atia")) destinations.add("ATIA")
+        else if (t.key.endsWith("-pkg-both")) {
+          destinations.add("ATIA")
+          destinations.add("GRUN")
+        }
+      })
+      const machineLabel = Array.from(destinations).sort().join(" + ") || "ATIA + GRUN"
+
+      finalGanttTasks.push({
+        key: `${cmd.id}-pkg-combined`,
+        label: `${cmd.name} : Conditionnement (${machineLabel})`,
+        startMinute: startMin,
+        durationMinutes: duration,
+        color: getCommandColor(cmdIdx, destinations.has("GRUN") ? "packaging_grun" : "packaging_atia"),
+      })
+    }
+  })
+
+  // 3. Combine all washing tasks across all commands into a single global row
+  const allWashTasks = ganttTasks.filter(t => t.key.endsWith("-wash"))
+  if (allWashTasks.length > 0) {
+    const segments = allWashTasks.map(t => ({
+      startMinute: t.startMinute,
+      durationMinutes: t.durationMinutes,
+      color: t.color,
+      label: t.label,
+    }))
+
+    const startMin = Math.min(...allWashTasks.map(t => t.startMinute))
+    const endMax = Math.max(...allWashTasks.map(t => t.startMinute + t.durationMinutes))
+
+    finalGanttTasks.push({
+      key: "global-cf-wash",
+      label: "Lavage des Cuves CF",
+      startMinute: startMin,
+      durationMinutes: endMax - startMin,
+      color: "#cbd5e1",
+      segments,
+    })
+  }
+
   return {
     totalDurationMinutes,
     commandsResults,
     tlcRemaining: tlc,
-    ganttTasks,
+    ganttTasks: finalGanttTasks,
   }
 }
 
@@ -861,6 +949,17 @@ const orderSlice = createSlice({
     setActiveCommand(state, action: PayloadAction<string>) {
       state.activeCommandId = action.payload
       syncActiveCommandToRoot(state)
+    },
+    setCommandMilkType(state, action: PayloadAction<{ id: string; milkType: MilkType }>) {
+      const { id, milkType } = action.payload
+      const cmd = state.commands.find(c => c.id === id)
+      if (cmd) {
+        cmd.milkType = milkType
+        if (state.activeCommandId === id) {
+          state.milkType = milkType
+        }
+      }
+      state.simulationDone = false
     },
     
     // Command-specific setters (modifying the active command)
@@ -1000,6 +1099,10 @@ const orderSlice = createSlice({
       state.tlcVolumes[action.payload.tank] = action.payload.volume
       state.simulationDone = false
     },
+    setTLCMilkType(state, action: PayloadAction<{ tank: "tlc1" | "tlc2" | "tlc3" | "tlc4"; milkType: MilkType }>) {
+      state.tlcMilkTypes[action.payload.tank] = action.payload.milkType
+      state.simulationDone = false
+    },
     setProductionStartTime(state, action: PayloadAction<string>) {
       state.productionStartTime = action.payload
       state.simulationDone = false
@@ -1021,7 +1124,7 @@ const orderSlice = createSlice({
       state.simulationDone = true
       
       // Run the detailed timeline optimizer
-      const results = runMultiCommandSimulation(state.commands, state.tlcVolumes)
+      const results = runMultiCommandSimulation(state.commands, state.tlcVolumes, state.tlcMilkTypes)
       state.simulationResults = results
       
       // Keep root outputs in sync with active command or overall synthesis for backwards compatibility
@@ -1051,6 +1154,7 @@ export const {
   addCommand,
   deleteCommand,
   setActiveCommand,
+  setCommandMilkType,
   setOrderQty,
   setGramPerPot,
   setMilkReceptionValue,
@@ -1062,6 +1166,7 @@ export const {
   setAllCFDestinations,
   launchCFToMachine,
   setTLCVolume,
+  setTLCMilkType,
   setProductionStartTime,
   startSimulation,
   updateSimulationProgress,

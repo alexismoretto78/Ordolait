@@ -7,9 +7,11 @@ import {
   addCommand, 
   deleteCommand, 
   setActiveCommand, 
+  setCommandMilkType,
   setOrderQty, 
   setGramPerPot, 
-  setProductionStartTime 
+  setProductionStartTime,
+  MilkType
 } from "../lib/orderSlice"
 
 export default function Commande() {
@@ -170,6 +172,57 @@ export default function Commande() {
               className="form-input"
             />
           </label>
+        </div>
+
+        {/* Premium Command Milk Type Selector */}
+        <div className="form-group" style={{ marginTop: 4 }}>
+          <span className="form-label" style={{ marginBottom: 6 }}>Type de lait requis pour cette commande</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+              const isSelected = (activeCommand.milkType || "bio") === type
+              const colors = {
+                bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
+                fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
+                savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
+                montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
+              }[type]
+
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+                  style={{
+                    padding: "10px 4px",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "0.8rem",
+                    fontWeight: isSelected ? "800" : "600",
+                    border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+                    background: isSelected ? colors.bg : "#ffffff",
+                    color: isSelected ? colors.color : "var(--text-muted)",
+                    cursor: "pointer",
+                    transition: "var(--transition)",
+                    textAlign: "center",
+                    boxShadow: isSelected ? "inset 0 1px 2px rgba(0,0,0,0.02)" : "none",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.borderColor = colors.color
+                      e.currentTarget.style.color = colors.color
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.borderColor = "var(--border-color)"
+                      e.currentTarget.style.color = "var(--text-muted)"
+                    }
+                  }}
+                >
+                  {colors.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <div className="info-section" style={{ marginTop: 8 }}>

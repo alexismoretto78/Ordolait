@@ -118,21 +118,44 @@ export default function Gantt() {
                         {task.label}
                       </div>
                       <div className="gantt-row-duration" style={{ fontSize: "0.8rem" }}>
-                        {formatTime(task.durationMinutes)}
+                        {task.key === "global-cf-wash" ? "30m / cuve" : formatTime(task.durationMinutes)}
                       </div>
                       <div className="gantt-timeline-container">
                         <div className="gantt-bar-bg">
-                          <div
-                            className="gantt-bar-fill"
-                            style={{
-                              left: `${(task.startMinute / totalDuration) * 100}%`,
-                              width: `${(task.durationMinutes / totalDuration) * 100}%`,
-                              backgroundColor: task.color,
-                              fontSize: "0.7rem",
-                            }}
-                          >
-                            +{task.startMinute.toFixed(0)}m
-                          </div>
+                          {task.segments ? (
+                            task.segments.map((seg, sIdx) => {
+                              const washCfName = seg.label ? seg.label.split("Lavage ")[1] || "" : "";
+                              return (
+                                <div
+                                  key={sIdx}
+                                  className="gantt-bar-fill"
+                                  style={{
+                                    left: `${(seg.startMinute / totalDuration) * 100}%`,
+                                    width: `${(seg.durationMinutes / totalDuration) * 100}%`,
+                                    backgroundColor: seg.color,
+                                    fontSize: "0.65rem",
+                                    borderLeft: "1px solid rgba(0, 0, 0, 0.15)",
+                                    borderRight: "1px solid rgba(0, 0, 0, 0.15)",
+                                  }}
+                                  title={`${seg.label} (Début: +${seg.startMinute.toFixed(0)}m)`}
+                                >
+                                  {washCfName}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div
+                              className="gantt-bar-fill"
+                              style={{
+                                left: `${(task.startMinute / totalDuration) * 100}%`,
+                                width: `${(task.durationMinutes / totalDuration) * 100}%`,
+                                backgroundColor: task.color,
+                                fontSize: "0.7rem",
+                              }}
+                            >
+                              +{task.startMinute.toFixed(0)}m
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
