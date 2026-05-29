@@ -16,9 +16,9 @@ import Simulation from "./components/simulation"
 export default function Home() {
   const dispatch = useDispatch()
   const { commands, activeCommandId } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"tlc" | "commandes" | "production" | "lancement">("tlc")
+  const [activeTab, setActiveTab] = useState<"tlc" | "commandes" | "production" | "lancement" | "simulation">("tlc")
 
-  const handleTabChange = (tab: "tlc" | "commandes" | "production" | "lancement") => {
+  const handleTabChange = (tab: "tlc" | "commandes" | "production" | "lancement" | "simulation") => {
     setActiveTab(tab)
   }
 
@@ -72,7 +72,7 @@ export default function Home() {
           borderRadius: "var(--radius-lg)",
           border: "1px solid var(--border-color)",
           boxShadow: "var(--shadow-md)",
-          maxWidth: "800px",
+          maxWidth: "960px",
           margin: "0 auto 36px auto",
           position: "sticky",
           top: "20px",
@@ -174,6 +174,30 @@ export default function Home() {
         >
           <span>🚀</span> Pilotage Machines
         </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("simulation")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "simulation" ? "700" : "500",
+            backgroundColor: activeTab === "simulation" ? "var(--primary)" : "transparent",
+            color: activeTab === "simulation" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "simulation" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>📊</span> Simulation & Gantt
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -206,15 +230,6 @@ export default function Home() {
           <section className="full-width-section">
             <Cuve />
           </section>
-
-          <section className="full-width-section" style={{ borderTop: "2px dashed var(--border-color)", paddingTop: 32, marginTop: 12 }}>
-            <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#0f172a", marginBottom: 20 }}>📊 Synthèse & Simulation du Processus</h2>
-            <Gantt />
-          </section>
-
-          <section className="full-width-section">
-            <Simulation />
-          </section>
         </div>
       )}
 
@@ -222,6 +237,18 @@ export default function Home() {
         <div className="dashboard-grid">
           <section className="full-width-section">
             <Lancement />
+          </section>
+        </div>
+      )}
+
+      {activeTab === "simulation" && (
+        <div className="dashboard-grid">
+          <section className="full-width-section">
+            <Gantt />
+          </section>
+
+          <section className="full-width-section">
+            <Simulation />
           </section>
         </div>
       )}
