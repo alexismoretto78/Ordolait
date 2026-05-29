@@ -101,8 +101,13 @@ export default function Lancement() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
             <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>PILOTAGE MACHINE</span>
-            <h2 style={{ margin: 0, paddingBottom: 0, borderBottom: "none", marginTop: 4 }}>
+            <h2 style={{ margin: 0, paddingBottom: 0, borderBottom: "none", marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               🚀 Lancement sur Machines — {activeCommand.name}
+              {activeCommand.isSkyr && (
+                <span style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: "12px", backgroundColor: "var(--violet)", color: "#ffffff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  🥣 Recette Skyr
+                </span>
+              )}
             </h2>
           </div>
           

@@ -45,13 +45,24 @@ export default function Cuve() {
           <div className="cuve-grid">
             {CF_TANKS.map((tank) => {
               const selected = activeCommand.selectedCFs.includes(tank.name)
-              const isDisabled = !activeCommand.pasteurized || (!selected && selectedCapacity >= volumeForCF)
+              const isCF20 = tank.name === "CF20"
+              const isSkyrCommand = activeCommand.isSkyr
+
+              const isDisabled = 
+                !activeCommand.pasteurized ||
+                (isSkyrCommand && !isCF20) ||
+                (!isSkyrCommand && isCF20) ||
+                (!selected && selectedCapacity >= volumeForCF)
 
               return (
                 <div
                   key={tank.name}
-                  className={`cuve-card ${selected ? "active" : ""}`}
-                  style={{ opacity: isDisabled ? 0.5 : 1 }}
+                  className={`cuve-card ${selected ? "active" : ""} ${isCF20 ? "cf20-card" : ""}`}
+                  style={{ 
+                    opacity: isDisabled ? 0.4 : 1,
+                    border: isCF20 ? "1px dashed var(--violet)" : "1px solid var(--border-color)",
+                    backgroundColor: isCF20 && selected ? "rgba(139, 92, 246, 0.08)" : "#ffffff"
+                  }}
                   onClick={() => {
                     if (!isDisabled) {
                       dispatch(toggleCuveSelection(tank.name))
@@ -68,8 +79,13 @@ export default function Cuve() {
                       gap: 4,
                     }}
                   >
-                    <span className="cuve-title">
+                    <span className="cuve-title" style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {tank.name}
+                      {isCF20 && (
+                        <span style={{ fontSize: "0.6rem", padding: "1px 4px", borderRadius: "3px", backgroundColor: "var(--violet)", color: "white", fontWeight: 700 }}>
+                          Skyr
+                        </span>
+                      )}
                     </span>
                     <span className="cuve-capacity">
                       <span className="hide-mobile">Capacité : </span>{tank.capacity} L

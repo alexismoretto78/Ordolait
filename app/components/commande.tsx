@@ -12,8 +12,30 @@ import {
   addReference,
   updateReference,
   deleteReference,
+  setSkyrMilkType,
+  setSkyrDirectPasto,
   MilkType
 } from "../lib/orderSlice"
+
+const ALL_PRESETS = [
+  { name: "Nature 125g", grams: 125 },
+  { name: "Nature 140g", grams: 140 },
+  { name: "Fraise 120g", grams: 120 },
+  { name: "Fraise 125g", grams: 125 },
+  { name: "Abricot 120g", grams: 120 },
+  { name: "Framboise 120g", grams: 120 },
+  { name: "Vanille 125g", grams: 125 },
+  { name: "Citron 125g", grams: 125 },
+  { name: "Myrtille 120g", grams: 120 },
+  { name: "Skyr Nature 125g", grams: 125 },
+  { name: "Skyr Nature 140g", grams: 140 },
+  { name: "Skyr Nature 400g", grams: 400 },
+  { name: "Skyr Nature 500g", grams: 500 },
+  { name: "Skyr Fraise 120g", grams: 120 },
+  { name: "Skyr Vanille 125g", grams: 125 },
+  { name: "Skyr Myrtille 120g", grams: 120 },
+  { name: "Skyr Abricot 120g", grams: 120 },
+]
 
 export default function Commande() {
   const dispatch = useDispatch()
@@ -36,6 +58,7 @@ export default function Commande() {
   const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
   const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
   const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
+  const [openDropdownRefId, setOpenDropdownRefId] = useState<string | null>(null)
 
   // Initialize and synchronize local values when command or references change
   useEffect(() => {
@@ -61,6 +84,18 @@ export default function Commande() {
 
     if (field === "name") {
       setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
+      
+      // Check if manually typed name matches any preset to auto-set format (grams)
+      const matched = ALL_PRESETS.find(p => p.name.toLowerCase() === valueStr.trim().toLowerCase())
+      if (matched) {
+        setLocalRefGrams(prev => ({ ...prev, [refId]: matched.grams.toString() }))
+        dispatch(updateReference({
+          cmdId: activeCommand.id,
+          refId,
+          fields: { name: valueStr, gramPerPot: matched.grams }
+        }))
+        return
+      }
     } else if (field === "potsQty") {
       const cleanVal = valueStr.replace(/[^0-9]/g, "")
       setLocalRefPots(prev => ({ ...prev, [refId]: cleanVal }))
@@ -76,6 +111,18 @@ export default function Commande() {
       refId,
       fields: { [field]: parsedValue }
     }))
+  }
+
+  const handleSelectPredefinedRef = (refId: string, name: string, grams: number) => {
+    setLocalRefNames(prev => ({ ...prev, [refId]: name }))
+    setLocalRefGrams(prev => ({ ...prev, [refId]: grams.toString() }))
+
+    dispatch(updateReference({
+      cmdId: activeCommand.id,
+      refId,
+      fields: { name, gramPerPot: grams }
+    }))
+    setOpenDropdownRefId(null)
   }
 
   // Calculate total pots quantity for active command
@@ -192,22 +239,107 @@ export default function Commande() {
                   const refGrams = Number(localRefGrams[ref.id]) || 0
                   const massKg = (refPots * refGrams) / 1000
 
+                  // Predefined references lists check
+                  const presets = ALL_PRESETS
+
                   return (
                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "8px 12px" }}>
+                      <td style={{ padding: "8px 12px", position: "relative" }}>
                         <input
                           type="text"
+                          placeholder="Rechercher ou saisir une référence..."
                           value={localRefNames[ref.id] || ""}
+                          onFocus={() => setOpenDropdownRefId(ref.id)}
+                          onBlur={() => {
+                            // Delay slightly so that click on dropdown item is registered before closing
+                            setTimeout(() => {
+                              setOpenDropdownRefId(current => current === ref.id ? null : current)
+                            }, 200)
+                          }}
                           onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
                           style={{
                             width: "100%",
-                            padding: "6px 10px",
-                            borderRadius: "4px",
+                            padding: "8px 12px",
+                            borderRadius: "var(--radius-sm)",
                             border: "1px solid #cbd5e1",
                             fontSize: "0.85rem",
                             fontWeight: 600,
+                            outline: "none",
+                            transition: "border-color 0.15s ease-in-out",
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setOpenDropdownRefId(null)
+                            }
                           }}
                         />
+
+                        {openDropdownRefId === ref.id && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "100%",
+                              left: "12px",
+                              right: "12px",
+                              backgroundColor: "white",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: "var(--radius-md)",
+                              boxShadow: "var(--shadow-lg)",
+                              zIndex: 1000,
+                              maxHeight: "220px",
+                              overflowY: "auto",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {(() => {
+                              const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+                              const filtered = presets.filter(p => 
+                                p.name.toLowerCase().includes(search)
+                              )
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
+                                    ✨ Référence personnalisée libre
+                                  </div>
+                                )
+                              }
+
+                              return filtered.map((preset) => (
+                                <div
+                                  key={preset.name}
+                                  onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+                                  style={{
+                                    padding: "8px 14px",
+                                    fontSize: "0.85rem",
+                                    fontWeight: 500,
+                                    cursor: "pointer",
+                                    transition: "background-color 0.15s",
+                                    borderBottom: "1px solid #f1f5f9",
+                                    textAlign: "left",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    color: "var(--text-main)"
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = "var(--primary-light)"
+                                    e.currentTarget.style.color = "var(--primary)"
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "transparent"
+                                    e.currentTarget.style.color = "var(--text-main)"
+                                  }}
+                                >
+                                  <span>{preset.name}</span>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
+                                    {preset.grams}g
+                                  </span>
+                                </div>
+                              ))
+                            })()}
+                          </div>
+                        )}
                       </td>
                       
                       <td style={{ padding: "8px 12px", textAlign: "center" }}>
@@ -294,56 +426,111 @@ export default function Commande() {
           </div>
         </div>
 
+
+
         {/* Command Milk Type Selector */}
         <div className="form-group" style={{ marginTop: 4 }}>
-          <span className="form-label" style={{ marginBottom: 6 }}>Type de lait requis pour cette commande</span>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-            {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
-              const isSelected = (activeCommand.milkType || "bio") === type
-              const colors = {
-                bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
-                fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
-                savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
-                montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
-              }[type]
+          <span className="form-label" style={{ marginBottom: 6 }}>
+            {activeCommand.isSkyr ? "Recette & Lait requis" : "Type de lait requis pour cette commande"}
+          </span>
+          {!activeCommand.isSkyr ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+                const isSelected = (activeCommand.milkType || "bio") === type
+                const colors = {
+                  bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
+                  fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
+                  savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
+                  montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
+                }[type]
 
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
-                  style={{
-                    padding: "10px 4px",
-                    borderRadius: "var(--radius-sm)",
-                    fontSize: "0.8rem",
-                    fontWeight: isSelected ? "800" : "600",
-                    border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
-                    background: isSelected ? colors.bg : "#ffffff",
-                    color: isSelected ? colors.color : "var(--text-muted)",
-                    cursor: "pointer",
-                    transition: "var(--transition)",
-                    textAlign: "center",
-                    boxShadow: isSelected ? "inset 0 1px 2px rgba(0,0,0,0.02)" : "none",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.borderColor = colors.color
-                      e.currentTarget.style.color = colors.color
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.borderColor = "var(--border-color)"
-                      e.currentTarget.style.color = "var(--text-muted)"
-                    }
-                  }}
-                >
-                  {colors.label}
-                </button>
-              )
-            })}
-          </div>
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+                    style={{
+                      padding: "10px 4px",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "0.8rem",
+                      fontWeight: isSelected ? "800" : "600",
+                      border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+                      background: isSelected ? colors.bg : "#ffffff",
+                      color: isSelected ? colors.color : "var(--text-muted)",
+                      cursor: "pointer",
+                      transition: "var(--transition)",
+                      textAlign: "center"
+                    }}
+                  >
+                    {colors.label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {([
+                { key: "fcv3", label: "🧪 Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
+                { key: "ecreme_savoie", label: "🏔️ Écrémé Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
+                { key: "ecreme_montagne", label: "⛰️ Écrémé Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
+              ] as const).map((opt) => {
+                const isSelected = activeCommand.skyrMilkType === opt.key
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
+                    style={{
+                      padding: "10px 4px",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "0.78rem",
+                      fontWeight: isSelected ? "800" : "600",
+                      border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
+                      background: isSelected ? opt.bg : "#ffffff",
+                      color: isSelected ? opt.color : "var(--text-muted)",
+                      cursor: "pointer",
+                      transition: "var(--transition)",
+                      textAlign: "center"
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
+        {activeCommand.isSkyr && activeCommand.skyrMilkType === "fcv3" && (
+          <div style={{ 
+            gridColumn: "span 2",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            backgroundColor: "rgba(37, 99, 235, 0.05)",
+            padding: "10px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid rgba(37, 99, 235, 0.15)",
+            marginTop: 4
+          }}>
+            <input
+              type="checkbox"
+              id="directPasto"
+              checked={activeCommand.skyrDirectPasto || false}
+              onChange={(e) => dispatch(setSkyrDirectPasto({ id: activeCommand.id, direct: e.target.checked }))}
+              style={{
+                width: "18px",
+                height: "18px",
+                cursor: "pointer",
+                accentColor: "var(--primary)"
+              }}
+            />
+            <label htmlFor="directPasto" style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", cursor: "pointer" }}>
+              ⚡ Pasteurisation en direct (sans passer par un TLS)
+            </label>
+          </div>
+        )}
 
         {/* Global Totals Summary */}
         <div className="info-section" style={{ marginTop: 12 }}>

@@ -19,10 +19,83 @@ export default function TLS() {
 
   const remaining = Math.max(0, activeCommand.milkReceivedVolume - selectedCapacity)
 
+  if (activeCommand.isSkyr && activeCommand.skyrMilkType === "fcv3" && activeCommand.skyrDirectPasto) {
+    return (
+      <div className="card" style={{ borderLeft: "4px solid var(--primary)" }}>
+        <h2>3. Réservoirs TLS (transfert) — {activeCommand.name}</h2>
+        <div style={{ padding: "30px 10px", textAlign: "center" }}>
+          <span style={{ fontSize: "2.8rem" }}>⚡</span>
+          <h3 style={{ color: "var(--primary)", marginTop: 12, fontSize: "1.2rem", fontWeight: 800 }}>
+            Pasteurisation en direct (Sans TLS)
+          </h3>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "440px", margin: "8px auto 0 auto", lineHeight: 1.4 }}>
+            Cette commande de Skyr avec lait FCV3 est pasteurisée en direct. Le lait est transféré directement de la réception vers la pasteurisation puis la cuve CF20, sans occuper ni transiter par les réservoirs TLS.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="card">
       <h2>3. Réservoirs TLS (transfert) — {activeCommand.name}</h2>
       <div className="form-grid">
+        {/* Retentate Tank Section for Skimmed Milk */}
+        {activeCommand.isSkyr && (activeCommand.skyrMilkType === "ecreme_savoie" || activeCommand.skyrMilkType === "ecreme_montagne") && (
+          <div style={{
+            gridColumn: "span 2",
+            backgroundColor: "rgba(139, 92, 246, 0.04)",
+            border: "1px solid rgba(139, 92, 246, 0.15)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            marginBottom: "8px",
+            display: "flex",
+            gap: "20px",
+            alignItems: "center",
+            position: "relative",
+            borderLeft: "4px solid var(--violet)"
+          }}>
+            {/* Graphic Cylinder */}
+            <div style={{
+              position: "relative",
+              width: "60px",
+              height: "80px",
+              background: "#ffffff",
+              borderRadius: "10px 10px 14px 14px",
+              border: "2px solid #cbd5e1",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "flex-end"
+            }}>
+              <div style={{
+                width: "100%",
+                height: "100%",
+                background: "linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%)",
+                borderRadius: "0 0 4px 4px"
+              }} />
+              <div style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                color: "white"
+              }}>
+                100%
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", color: "#1e293b", fontWeight: 700 }}>
+                🧪 Tank Retentat (Stockage Lait Écrémé)
+              </h4>
+              <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                Contient le lait écrémé à partir du lait cru de {activeCommand.skyrMilkType === "ecreme_savoie" ? "Savoie 🏔️" : "Montagne ⛰️"}. Le volume de <strong>{activeCommand.milkReceivedVolume.toFixed(1)} L</strong> est stocké et prêt à être transféré dans les réservoirs TLS.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div>
           <span className="form-label">Tanks TLS</span>
           <div className="tank-grid">
