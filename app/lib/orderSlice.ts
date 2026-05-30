@@ -69,6 +69,7 @@ export type CommandSimResult = {
   packagingAtiaDuration: number
   packagingGrunDuration: number
   totalDuration: number
+  referencesResults?: { refId: string; name: string; start: number; end: number }[]
 }
 
 export type GanttSegment = {
@@ -76,6 +77,7 @@ export type GanttSegment = {
   durationMinutes: number
   color: string
   label?: string
+  shortLabel?: string
 }
 
 export type GanttTask = {
@@ -1104,6 +1106,8 @@ export const runMultiCommandSimulation = (
     if (!cmdRes) return
     const packagingStart = cmdRes.maturationEnd
 
+    const refResults: { refId: string; name: string; start: number; end: number }[] = []
+
     cmd.references.forEach((ref) => {
       const dest = cmd.refDestinations?.[ref.id] || "both"
       const customPots = cmd.refPotsLaunched?.[ref.id]
@@ -1175,10 +1179,19 @@ export const runMultiCommandSimulation = (
         })
       }
 
+      refResults.push({
+        refId: ref.id,
+        name: ref.name,
+        start: pkgStart,
+        end: emptyTime
+      })
+
       if (cmdMaxEnd[cmd.id] === undefined || emptyTime > cmdMaxEnd[cmd.id]) {
         cmdMaxEnd[cmd.id] = emptyTime
       }
     })
+
+    cmdRes.referencesResults = refResults
 
     // Group CF tank washing tasks at the end of reference packaging
     const cmdPkgEnd = cmdMaxEnd[cmd.id] || cmdRes.maturationEnd
@@ -1206,65 +1219,119 @@ export const runMultiCommandSimulation = (
     ...Object.values(tlsAvailableAt)
   )
 
-  // Post-process ganttTasks to group washings and packaging rows compactly
+  // Post-process ganttTasks into exactly 6 global grouped rows (Transfer, Osmosis, Pasteurization, Maturation, Packaging, Washing)
   const finalGanttTasks: GanttTask[] = []
-  ganttTasks.forEach(task => {
-    if (!task.key.includes("-pkg-") && !task.key.endsWith("-wash")) {
-      finalGanttTasks.push(task)
-    }
-  })
 
-  // Group Packaging by Command
-  commands.forEach((cmd, cmdIdx) => {
-    const pkgTasks = ganttTasks.filter(t => t.key.startsWith(`${cmd.id}-`) && t.key.includes("-pkg-"))
-    if (pkgTasks.length > 0) {
-      const startMin = Math.min(...pkgTasks.map(t => t.startMinute))
-      const endMax = Math.max(...pkgTasks.map(t => t.startMinute + t.durationMinutes))
-      const duration = endMax - startMin
+  const createGroupedRow = (
+    key: string,
+    label: string,
+    filterFn: (t: GanttTask) => boolean,
+    shortLabelFn: (t: GanttTask) => string,
+    defaultColor: string
+  ) => {
+    const matchingTasks = ganttTasks.filter(filterFn)
+    if (matchingTasks.length === 0) return
 
-      const destinations = new Set<string>()
-      pkgTasks.forEach(t => {
-        if (t.key.endsWith("-pkg-grun")) destinations.add("GRUN")
-        else if (t.key.endsWith("-pkg-atia")) destinations.add("ATIA")
-        else if (t.key.endsWith("-pkg-both")) {
-          destinations.add("ATIA")
-          destinations.add("GRUN")
-        }
-      })
-      const machineLabel = Array.from(destinations).sort().join(" + ") || "ATIA + GRUN"
-
-      finalGanttTasks.push({
-        key: `${cmd.id}-pkg-combined`,
-        label: `${cmd.name} : Conditionnement (${machineLabel})`,
-        startMinute: startMin,
-        durationMinutes: duration,
-        color: getCommandColor(cmdIdx, destinations.has("GRUN") ? "packaging_grun" : "packaging_atia"),
-      })
-    }
-  })
-
-  // Group Washing tasks in a single global row
-  const allWashTasks = ganttTasks.filter(t => t.key.endsWith("-wash"))
-  if (allWashTasks.length > 0) {
-    const segments = allWashTasks.map(t => ({
+    const segments = matchingTasks.map(t => ({
       startMinute: t.startMinute,
       durationMinutes: t.durationMinutes,
       color: t.color,
       label: t.label,
+      shortLabel: shortLabelFn(t),
     }))
 
-    const startMin = Math.min(...allWashTasks.map(t => t.startMinute))
-    const endMax = Math.max(...allWashTasks.map(t => t.startMinute + t.durationMinutes))
+    // Sort segments chronologically
+    segments.sort((a, b) => a.startMinute - b.startMinute)
+
+    const startMin = Math.min(...matchingTasks.map(t => t.startMinute))
+    const endMax = Math.max(...matchingTasks.map(t => t.startMinute + t.durationMinutes))
 
     finalGanttTasks.push({
-      key: "global-cf-wash",
-      label: "Lavage des Cuves CF",
+      key,
+      label,
       startMinute: startMin,
       durationMinutes: endMax - startMin,
-      color: "#cbd5e1",
+      color: defaultColor,
       segments,
     })
   }
+
+  // 1. Transfert
+  createGroupedRow(
+    "grouped-transfer",
+    "1. Transfert TLC ➔ TLS / Écrémage",
+    t => t.key.includes("-transfer") || t.key.includes("-skimming") || t.key.includes("direct-transfer"),
+    t => {
+      if (t.key.includes("direct-transfer")) return "Direct (CF20)";
+      if (t.key.includes("-skimming")) return "Écrémage";
+      const match = t.key.match(/TLS[1-3]/);
+      return match ? match[0] : "TLC-TLS";
+    },
+    "hsl(220, 80%, 60%)"
+  )
+
+  // 2. Osmose Inverse
+  createGroupedRow(
+    "grouped-osmose",
+    "2. Osmose Inverse",
+    t => t.key.includes("-osmose"),
+    t => {
+      const match = t.key.match(/TLS[1-3]/);
+      return match ? match[0] : "Osmose";
+    },
+    "hsl(220, 75%, 45%)"
+  )
+
+  // 3. Poudrage & Pasteurisation
+  createGroupedRow(
+    "grouped-pasto",
+    "3. Poudrage & Pasteurisation",
+    t => t.key.includes("-pasto") || t.key.includes("direct-pasto"),
+    t => {
+      if (t.key.includes("direct-pasto")) return "CF20";
+      const match = t.key.match(/TLS[1-3]/);
+      return match ? match[0] : "Pasto";
+    },
+    "hsl(220, 80%, 40%)"
+  )
+
+  // 4. Maturation en Cuves
+  createGroupedRow(
+    "grouped-maturation",
+    "4. Maturation en Cuves",
+    t => t.key.includes("-maturation"),
+    t => {
+      const match = t.key.match(/CF\d+/);
+      return match ? match[0] : "Maturation";
+    },
+    "hsl(220, 60%, 50%)"
+  )
+
+  // 5. Conditionnement
+  createGroupedRow(
+    "grouped-packaging",
+    "5. Conditionnement (Lignes ATIA & GRUNWALD)",
+    t => t.key.includes("-pkg-"),
+    t => {
+      const cmdMatch = t.label.match(/(Commande \d+|Cmd \d+)/i) || t.label.match(/(C\d+)/);
+      const cmdText = cmdMatch ? cmdMatch[0] : "Cmd";
+      const machine = t.key.endsWith("-grun") ? "GRUN" : t.key.endsWith("-atia") ? "ATIA" : "ATIA+GRUN";
+      return `${cmdText} (${machine})`;
+    },
+    "hsl(220, 90%, 55%)"
+  )
+
+  // 6. Lavage des Cuves
+  createGroupedRow(
+    "grouped-cf-wash",
+    "6. Lavage des Cuves CF",
+    t => t.key.endsWith("-wash"),
+    t => {
+      const match = t.key.match(/CF\d+/);
+      return match ? match[0] : "Lavage";
+    },
+    "#cbd5e1"
+  )
 
   return {
     totalDurationMinutes,

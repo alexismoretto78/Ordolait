@@ -244,102 +244,146 @@ export default function Commande() {
 
                   return (
                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "8px 12px", position: "relative" }}>
-                        <input
-                          type="text"
-                          placeholder="Rechercher ou saisir une référence..."
-                          value={localRefNames[ref.id] || ""}
-                          onFocus={() => setOpenDropdownRefId(ref.id)}
-                          onBlur={() => {
-                            // Delay slightly so that click on dropdown item is registered before closing
-                            setTimeout(() => {
-                              setOpenDropdownRefId(current => current === ref.id ? null : current)
-                            }, 200)
-                          }}
-                          onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
-                          style={{
-                            width: "100%",
-                            padding: "8px 12px",
-                            borderRadius: "var(--radius-sm)",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "0.85rem",
-                            fontWeight: 600,
-                            outline: "none",
-                            transition: "border-color 0.15s ease-in-out",
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") {
-                              setOpenDropdownRefId(null)
-                            }
-                          }}
-                        />
+                      <td style={{ padding: "8px 12px" }}>
+                        <div style={{ position: "relative", width: "100%" }}>
+                          <input
+                            type="text"
+                            placeholder="Rechercher ou saisir une référence..."
+                            value={localRefNames[ref.id] || ""}
+                            onFocus={() => setOpenDropdownRefId(ref.id)}
+                            onBlur={() => {
+                              // Delay slightly so that click on dropdown item is registered before closing
+                              setTimeout(() => {
+                                setOpenDropdownRefId(current => current === ref.id ? null : current)
+                              }, 200)
+                            }}
+                            onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
+                            style={{
+                              width: "100%",
+                              padding: "8px 32px 8px 12px",
+                              borderRadius: "var(--radius-sm)",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "0.85rem",
+                              fontWeight: 600,
+                              outline: "none",
+                              transition: "border-color 0.15s ease-in-out",
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                setOpenDropdownRefId(null)
+                              }
+                            }}
+                          />
 
-                        {openDropdownRefId === ref.id && (
-                          <div
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault() // Prevents input from losing focus
+                              setOpenDropdownRefId(current => current === ref.id ? null : ref.id)
+                            }}
                             style={{
                               position: "absolute",
-                              top: "100%",
-                              left: "12px",
-                              right: "12px",
-                              backgroundColor: "white",
-                              border: "1px solid var(--border-color)",
-                              borderRadius: "var(--radius-md)",
-                              boxShadow: "var(--shadow-lg)",
-                              zIndex: 1000,
-                              maxHeight: "220px",
-                              overflowY: "auto",
-                              marginTop: "4px",
+                              right: "8px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              padding: "4px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "var(--text-muted)",
+                              transition: "color 0.15s",
                             }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--primary)"}
+                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
                           >
-                            {(() => {
-                              const search = (localRefNames[ref.id] || "").toLowerCase().trim()
-                              const filtered = presets.filter(p => 
-                                p.name.toLowerCase().includes(search)
-                              )
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              style={{
+                                transform: openDropdownRefId === ref.id ? "rotate(180deg)" : "rotate(0deg)",
+                                transition: "transform 0.2s ease",
+                              }}
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </button>
 
-                              if (filtered.length === 0) {
-                                return (
-                                  <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
-                                    ✨ Référence personnalisée libre
-                                  </div>
+                          {openDropdownRefId === ref.id && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "100%",
+                                left: "0",
+                                right: "0",
+                                backgroundColor: "white",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: "var(--radius-md)",
+                                boxShadow: "var(--shadow-lg)",
+                                zIndex: 1000,
+                                maxHeight: "220px",
+                                overflowY: "auto",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {(() => {
+                                const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+                                const filtered = presets.filter(p => 
+                                  p.name.toLowerCase().includes(search)
                                 )
-                              }
 
-                              return filtered.map((preset) => (
-                                <div
-                                  key={preset.name}
-                                  onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
-                                  style={{
-                                    padding: "8px 14px",
-                                    fontSize: "0.85rem",
-                                    fontWeight: 500,
-                                    cursor: "pointer",
-                                    transition: "background-color 0.15s",
-                                    borderBottom: "1px solid #f1f5f9",
-                                    textAlign: "left",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    color: "var(--text-main)"
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = "var(--primary-light)"
-                                    e.currentTarget.style.color = "var(--primary)"
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = "transparent"
-                                    e.currentTarget.style.color = "var(--text-main)"
-                                  }}
-                                >
-                                  <span>{preset.name}</span>
-                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
-                                    {preset.grams}g
-                                  </span>
-                                </div>
-                              ))
-                            })()}
-                          </div>
-                        )}
+                                if (filtered.length === 0) {
+                                  return (
+                                    <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
+                                      ✨ Référence personnalisée libre
+                                    </div>
+                                  )
+                                }
+
+                                return filtered.map((preset) => (
+                                  <div
+                                    key={preset.name}
+                                    onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+                                    style={{
+                                      padding: "8px 14px",
+                                      fontSize: "0.85rem",
+                                      fontWeight: 500,
+                                      cursor: "pointer",
+                                      transition: "background-color 0.15s",
+                                      borderBottom: "1px solid #f1f5f9",
+                                      textAlign: "left",
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      color: "var(--text-main)"
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "var(--primary-light)"
+                                      e.currentTarget.style.color = "var(--primary)"
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent"
+                                      e.currentTarget.style.color = "var(--text-main)"
+                                    }}
+                                  >
+                                    <span>{preset.name}</span>
+                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
+                                      {preset.grams}g
+                                    </span>
+                                  </div>
+                                ))
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       
                       <td style={{ padding: "8px 12px", textAlign: "center" }}>

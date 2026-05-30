@@ -118,13 +118,13 @@ export default function Gantt() {
                         {task.label}
                       </div>
                       <div className="gantt-row-duration" style={{ fontSize: "0.8rem" }}>
-                        {task.key === "global-cf-wash" ? "30m / cuve" : formatTime(task.durationMinutes)}
+                        {task.key === "grouped-cf-wash" ? "30m / cuve" : formatTime(task.durationMinutes)}
                       </div>
                       <div className="gantt-timeline-container">
                         <div className="gantt-bar-bg">
                           {task.segments ? (
-                            task.segments.map((seg, sIdx) => {
-                              const washCfName = seg.label ? seg.label.split("Lavage ")[1] || "" : "";
+                            task.segments.map((seg: any, sIdx) => {
+                              const displayText = seg.shortLabel || (seg.label ? seg.label.split("Lavage ")[1] || seg.label : "");
                               return (
                                 <div
                                   key={sIdx}
@@ -139,7 +139,7 @@ export default function Gantt() {
                                   }}
                                   title={`${seg.label} (Début: +${seg.startMinute.toFixed(0)}m)`}
                                 >
-                                  {washCfName}
+                                  {displayText}
                                 </div>
                               );
                             })

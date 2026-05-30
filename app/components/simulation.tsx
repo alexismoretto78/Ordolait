@@ -146,6 +146,47 @@ export default function Simulation() {
                           <strong style={{ color: "var(--success-hover)" }}>{getCalendarTime(cmdRes.packagingEnd)}</strong>
                         </div>
                       </div>
+
+                      {cmdRes.referencesResults && cmdRes.referencesResults.length > 0 && (
+                        <div style={{ marginTop: 12, borderTop: "1px dashed var(--border-color)", paddingTop: 10 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                            📦 Détail Conditionnement par Référence :
+                          </span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {cmdRes.referencesResults.map((refRes) => (
+                              <div 
+                                key={refRes.refId} 
+                                style={{ 
+                                  backgroundColor: "#f8fafc", 
+                                  padding: "8px 12px", 
+                                  borderRadius: "6px", 
+                                  border: "1px solid var(--border-color)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 4
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <strong style={{ fontSize: "0.8rem", color: "var(--primary)" }}>{refRes.name}</strong>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                                    Durée : {formatTime(refRes.end - refRes.start)}
+                                  </span>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: "0.75rem" }}>
+                                  <div>
+                                    <span style={{ color: "var(--text-muted)" }}>Début :</span><br />
+                                    <strong>{getCalendarTime(refRes.start)}</strong>
+                                  </div>
+                                  <div>
+                                    <span style={{ color: "var(--text-muted)" }}>Fin :</span><br />
+                                    <strong>{getCalendarTime(refRes.end)}</strong>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
