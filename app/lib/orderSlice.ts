@@ -582,7 +582,19 @@ const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => 
   if (active.isSkyr && !wasSkyr) {
     active.skyrMilkType = "fcv3"
     active.skyrDirectPasto = false
-    active.selectedCFs = ["CF20"]
+    
+    const hasNonSkyr = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
+    if (hasNonSkyr) {
+      const totalWhiteMass = active.whiteMassKg || 1
+      const nonSkyrWhiteMass = active.references
+        .filter(r => !r.name.toLowerCase().includes("skyr"))
+        .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+      const nonSkyrRatio = nonSkyrWhiteMass / totalWhiteMass
+      const nonSkyrOsmosedVolume = active.osmosedVolume * nonSkyrRatio
+      active.selectedCFs = ["CF20", ...selectCuvesForVolume(nonSkyrOsmosedVolume, false)]
+    } else {
+      active.selectedCFs = ["CF20"]
+    }
   } else if (!active.isSkyr && wasSkyr) {
     active.selectedCFs = selectCuvesForVolume(active.osmosedVolume, false)
   }
@@ -642,7 +654,25 @@ const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => 
 
   if (active.osmosedVolume > 0) {
     active.pasteurized = true
-    active.selectedCFs = selectCuvesForVolume(active.osmosedVolume, active.isSkyr)
+    
+    const hasSkyr = active.references.some(r => r.name.toLowerCase().includes("skyr"))
+    const hasNonSkyr = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
+    
+    if (hasSkyr && hasNonSkyr) {
+      const totalWhiteMass = active.whiteMassKg
+      const nonSkyrWhiteMass = active.references
+        .filter(r => !r.name.toLowerCase().includes("skyr"))
+        .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+      
+      const nonSkyrRatio = totalWhiteMass > 0 ? nonSkyrWhiteMass / totalWhiteMass : 0
+      const nonSkyrOsmosedVolume = active.osmosedVolume * nonSkyrRatio
+      
+      const nonSkyrCFs = selectCuvesForVolume(nonSkyrOsmosedVolume, false)
+      active.selectedCFs = ["CF20", ...nonSkyrCFs]
+    } else {
+      active.selectedCFs = selectCuvesForVolume(active.osmosedVolume, active.isSkyr)
+    }
+
     initializeNewCFs(active)
     active.status = active.selectedCFs.length > 0 ? "cuve" : active.status
   } else {
@@ -723,17 +753,60 @@ export const runMultiCommandSimulation = (
   const commandCFSelectedList: { [commandId: string]: string[] } = {}
   
   commands.forEach((cmd) => {
-    const selectedCFs = cmd.selectedCFs.length > 0 ? cmd.selectedCFs : selectCuvesForVolume(cmd.osmosedVolume)
+    let selectedCFs = cmd.selectedCFs
+    if (selectedCFs.length === 0) {
+      const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
+      const hasNonSkyr = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
+      if (hasSkyr && hasNonSkyr) {
+        const totalWhiteMass = cmd.whiteMassKg
+        const nonSkyrWhiteMass = cmd.references
+          .filter(r => !r.name.toLowerCase().includes("skyr"))
+          .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+        
+        const nonSkyrRatio = totalWhiteMass > 0 ? nonSkyrWhiteMass / totalWhiteMass : 0
+        const nonSkyrOsmosedVolume = cmd.osmosedVolume * nonSkyrRatio
+        
+        selectedCFs = ["CF20", ...selectCuvesForVolume(nonSkyrOsmosedVolume, false)]
+      } else {
+        selectedCFs = selectCuvesForVolume(cmd.osmosedVolume, cmd.isSkyr)
+      }
+    }
     commandCFSelectedList[cmd.id] = selectedCFs
     
     const cfAllocatedVolumes: { [tank: string]: number } = {}
-    let remCFVol = cmd.osmosedVolume
+    const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
+    const hasNonSkyr = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
+
+    const totalWhiteMass = cmd.whiteMassKg || 1
+    const skyrWhiteMass = cmd.references
+      .filter(r => r.name.toLowerCase().includes("skyr"))
+      .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+    const nonSkyrWhiteMass = cmd.references
+      .filter(r => !r.name.toLowerCase().includes("skyr"))
+      .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+
+    const skyrRatio = skyrWhiteMass / totalWhiteMass
+    const nonSkyrRatio = nonSkyrWhiteMass / totalWhiteMass
+
+    const skyrOsmosedVolume = cmd.osmosedVolume * skyrRatio
+    const nonSkyrOsmosedVolume = cmd.osmosedVolume * nonSkyrRatio
+
+    let remSkyrVol = skyrOsmosedVolume
+    let remNonSkyrVol = nonSkyrOsmosedVolume
+
     selectedCFs.forEach(cfName => {
       const tank = CF_TANKS.find(t => t.name === cfName)
       const cap = tank?.capacity ?? 0
-      const allocated = Math.min(remCFVol, cap)
-      cfAllocatedVolumes[cfName] = allocated
-      remCFVol = Math.max(0, remCFVol - allocated)
+      
+      if (cfName === "CF20") {
+        const allocated = Math.min(remSkyrVol, cap)
+        cfAllocatedVolumes[cfName] = Number(allocated.toFixed(3))
+        remSkyrVol = Math.max(0, remSkyrVol - allocated)
+      } else {
+        const allocated = Math.min(remNonSkyrVol, cap)
+        cfAllocatedVolumes[cfName] = Number(allocated.toFixed(3))
+        remNonSkyrVol = Math.max(0, remNonSkyrVol - allocated)
+      }
     })
     commandCFAllocations[cmd.id] = cfAllocatedVolumes
   })
