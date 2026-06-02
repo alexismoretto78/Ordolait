@@ -5,7 +5,7 @@ import { RootState } from "../lib/store"
 
 export default function Pasto() {
   const dispatch = useDispatch()
-  const { osmosedVolume, pasteurized, status } = useSelector(
+  const { whiteMassKg, pasteurized, status } = useSelector(
     (state: RootState) => state.order
   )
 
@@ -15,7 +15,7 @@ export default function Pasto() {
       <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
         <div>
           <strong>Volume à pasteuriser</strong>
-          <p>{osmosedVolume.toFixed(3)} L</p>
+          <p>{whiteMassKg.toFixed(3)} L</p>
         </div>
 
         <div>

@@ -179,16 +179,25 @@ export default function TLS() {
           <div className="tank-grid">
             {TLS_TANKS.map((tank) => {
               const selected = activeCommand.selectedTLSs.includes(tank.name)
+              const cmdsUsingTank = commands.filter(c => c.selectedTLSs.includes(tank.name))
+              
               return (
-                <button
-                  key={tank.name}
-                  type="button"
-                  onClick={() => dispatch(toggleTLSSelection(tank.name))}
-                  disabled={volumeForTLS <= 0 && !selected}
-                  className={`tank-button ${selected ? "active" : ""}`}
-                >
-                  {tank.name} ({tank.capacity} L)
-                </button>
+                <div key={tank.name} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => dispatch(toggleTLSSelection(tank.name))}
+                    disabled={volumeForTLS <= 0 && !selected}
+                    className={`tank-button ${selected ? "active" : ""}`}
+                    style={{ width: "100%", margin: 0 }}
+                  >
+                    {tank.name} ({tank.capacity} L)
+                  </button>
+                  {cmdsUsingTank.length > 0 && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "4px 8px", background: "var(--bg-app)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)" }}>
+                      <strong>Affecté à :</strong> {cmdsUsingTank.map(c => c.name).join(", ")}
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

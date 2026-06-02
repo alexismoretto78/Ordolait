@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { 
-  addCommand, 
-  deleteCommand, 
-  setActiveCommand, 
+import {
+  addCommand,
+  deleteCommand,
+  setActiveCommand,
   setCommandMilkType,
   setProductionStartTime,
   addReference,
@@ -14,27 +14,16 @@ import {
   deleteReference,
   setSkyrMilkType,
   setSkyrDirectPasto,
-  MilkType
+  MilkType,
+  updateCommandName
 } from "../lib/orderSlice"
 
 const ALL_PRESETS = [
-  { name: "Nature 125g", grams: 125 },
-  { name: "Nature 140g", grams: 140 },
-  { name: "Fraise 120g", grams: 120 },
-  { name: "Fraise 125g", grams: 125 },
-  { name: "Abricot 120g", grams: 120 },
-  { name: "Framboise 120g", grams: 120 },
-  { name: "Vanille 125g", grams: 125 },
-  { name: "Citron 125g", grams: 125 },
-  { name: "Myrtille 120g", grams: 120 },
-  { name: "Skyr Nature 125g", grams: 125 },
-  { name: "Skyr Nature 140g", grams: 140 },
-  { name: "Skyr Nature 400g", grams: 400 },
-  { name: "Skyr Nature 500g", grams: 500 },
-  { name: "Skyr Fraise 120g", grams: 120 },
-  { name: "Skyr Vanille 125g", grams: 125 },
-  { name: "Skyr Myrtille 120g", grams: 120 },
-  { name: "Skyr Abricot 120g", grams: 120 },
+  { name: "Skyr", grams: 105 },
+  { name: "Baiko", grams: 105 },
+  { name: "Val de Praz", grams: 105 },
+  { name: "Nature", grams: 105 },
+  { name: "MDD", grams: 105 }
 ]
 
 export default function Commande() {
@@ -61,7 +50,10 @@ export default function Commande() {
   const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
   const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
   const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
-  const [openDropdownRefId, setOpenDropdownRefId] = useState<string | null>(null)
+
+
+  const [editingCommandId, setEditingCommandId] = useState<string | null>(null)
+  const [editingCommandName, setEditingCommandName] = useState<string>("")
 
   // Initialize and synchronize local values when command or references change
   useEffect(() => {
@@ -87,7 +79,7 @@ export default function Commande() {
 
     if (field === "name") {
       setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
-      
+
       // Check if manually typed name matches any preset to auto-set format (grams)
       const matched = ALL_PRESETS.find(p => p.name.toLowerCase() === valueStr.trim().toLowerCase())
       if (matched) {
@@ -125,7 +117,6 @@ export default function Commande() {
       refId,
       fields: { name, gramPerPot: grams }
     }))
-    setOpenDropdownRefId(null)
   }
 
   // Calculate total pots quantity for active command
@@ -146,14 +137,23 @@ export default function Commande() {
       </div>
 
       {/* Command Tabs Selection */}
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
         {commands.map((cmd) => {
           const isActive = cmd.id === activeCommandId
           const cmdPots = cmd.references.reduce((s, r) => s + r.potsQty, 0)
           return (
             <div
               key={cmd.id}
-              onClick={() => dispatch(setActiveCommand(cmd.id))}
+              onClick={() => {
+                if (editingCommandId !== cmd.id) {
+                  dispatch(setActiveCommand(cmd.id))
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setEditingCommandId(cmd.id)
+                setEditingCommandName(cmd.name)
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -171,11 +171,47 @@ export default function Commande() {
                 boxShadow: isActive ? "var(--shadow-sm)" : "none",
               }}
             >
-              <span>{cmd.name}</span>
+              {editingCommandId === cmd.id ? (
+                <input
+                  type="text"
+                  value={editingCommandName}
+                  autoFocus
+                  onChange={(e) => setEditingCommandName(e.target.value)}
+                  onBlur={() => {
+                    if (editingCommandName.trim()) {
+                      dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
+                    }
+                    setEditingCommandId(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (editingCommandName.trim()) {
+                        dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
+                      }
+                      setEditingCommandId(null)
+                    } else if (e.key === 'Escape') {
+                      setEditingCommandId(null)
+                    }
+                  }}
+                  style={{
+                    border: "1px solid var(--primary-border)",
+                    borderRadius: "4px",
+                    padding: "2px 6px",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    width: "120px",
+                    background: "#fff",
+                    color: "var(--text-main)",
+                    fontWeight: "600"
+                  }}
+                />
+              ) : (
+                <span>{cmd.name}</span>
+              )}
               <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
                 ({(cmdPots / 1000).toFixed(0)}k pots)
               </span>
-              
+
               {commands.length > 1 && (
                 <button
                   type="button"
@@ -207,14 +243,14 @@ export default function Commande() {
       </div>
 
       <div className="form-grid">
-        
+
         {/* Product References List Table */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
               Références Produits de la Commande
             </span>
-            
+
             <button
               type="button"
               onClick={() => dispatch(addReference({ cmdId: activeCommand.id }))}
@@ -225,8 +261,8 @@ export default function Commande() {
             </button>
           </div>
 
-          <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+          <div className="table-container" style={{ borderRadius: "var(--radius-md)", overflowX: "auto" }}>
+            <table className="mobile-responsive-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
               <thead>
                 <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", minWidth: "260px" }}>Nom Réf</th>
@@ -246,21 +282,20 @@ export default function Commande() {
                   const presets = ALL_PRESETS
 
                   return (
-                    <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "8px 12px", minWidth: "260px" }}>
+                    <tr key={ref.id} className="responsive-tr" style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+                      <td data-label="Nom Réf" className="responsive-td" style={{ padding: "8px 12px" }}>
                         <div style={{ position: "relative", width: "100%" }}>
-                          <input
-                            type="text"
-                            placeholder="Rechercher ou saisir une référence..."
+                          <select
                             value={localRefNames[ref.id] || ""}
-                            onFocus={() => setOpenDropdownRefId(ref.id)}
-                            onBlur={() => {
-                              // Delay slightly so that click on dropdown item is registered before closing
-                              setTimeout(() => {
-                                setOpenDropdownRefId(current => current === ref.id ? null : current)
-                              }, 200)
+                            onChange={(e) => {
+                              const selectedName = e.target.value
+                              const preset = ALL_PRESETS.find(p => p.name === selectedName)
+                              if (preset) {
+                                handleSelectPredefinedRef(ref.id, preset.name, preset.grams)
+                              } else {
+                                handleUpdateRef(ref.id, "name", selectedName)
+                              }
                             }}
-                            onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
                             style={{
                               width: "100%",
                               padding: "8px 32px 8px 12px",
@@ -269,113 +304,43 @@ export default function Commande() {
                               fontSize: "0.85rem",
                               fontWeight: 600,
                               outline: "none",
+                              backgroundColor: "#fff",
                               transition: "border-color 0.15s ease-in-out",
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") {
-                                setOpenDropdownRefId(null)
-                              }
-                            }}
-                          />
-
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault() // Prevents input from losing focus
-                              setOpenDropdownRefId(current => current === ref.id ? null : ref.id)
-                            }}
-                            style={{
-                              position: "absolute",
-                              right: "8px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              background: "none",
-                              border: "none",
-                              padding: "4px",
                               cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              color: "var(--text-muted)",
-                              transition: "color 0.15s",
+                              appearance: "none",
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--primary)"}
-                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
                           >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              style={{
-                                transform: openDropdownRefId === ref.id ? "rotate(180deg)" : "rotate(0deg)",
-                                transition: "transform 0.2s ease",
-                              }}
-                            >
+                            {ALL_PRESETS.some(p => p.name === localRefNames[ref.id]) ? null : (
+                              <option value={localRefNames[ref.id] || ""} disabled>
+                                {localRefNames[ref.id] || "Choisir une référence"}
+                              </option>
+                            )}
+                            {ALL_PRESETS.map(preset => (
+                              <option key={preset.name} value={preset.name}>
+                                {preset.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div style={{
+                            position: "absolute",
+                            right: "12px",
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            pointerEvents: "none",
+                            color: "var(--text-muted)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="6 9 12 15 18 9" />
                             </svg>
-                          </button>
-
-                          {openDropdownRefId === ref.id && (
-                            <>
-                              <div 
-                                className="ref-dropdown-backdrop" 
-                                onMouseDown={(e) => {
-                                  e.preventDefault()
-                                  setOpenDropdownRefId(null)
-                                }}
-                              />
-                              <div className="ref-dropdown">
-                                <div className="ref-dropdown-header">
-                                  <span>Choisir une référence</span>
-                                  <button
-                                    type="button"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault()
-                                      setOpenDropdownRefId(null)
-                                    }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                                {(() => {
-                                  const search = (localRefNames[ref.id] || "").toLowerCase().trim()
-                                  const filtered = presets.filter(p => 
-                                    p.name.toLowerCase().includes(search)
-                                  )
-
-                                  if (filtered.length === 0) {
-                                    return (
-                                      <div className="ref-dropdown-empty">
-                                        ✨ Référence personnalisée libre
-                                      </div>
-                                    )
-                                  }
-
-                                  return filtered.map((preset) => (
-                                    <div
-                                      key={preset.name}
-                                      onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
-                                      className="ref-dropdown-item"
-                                    >
-                                      <span>{preset.name}</span>
-                                      <span className="ref-dropdown-badge">
-                                        {preset.grams}g
-                                      </span>
-                                    </div>
-                                  ))
-                                })()}
-                              </div>
-                            </>
-                          )}
+                          </div>
                         </div>
                       </td>
-                      
-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
+
+                      <td data-label="Quantité (pots)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
                         <input
                           type="text"
                           value={localRefPots[ref.id] || ""}
@@ -391,8 +356,8 @@ export default function Commande() {
                           }}
                         />
                       </td>
-                      
-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
+
+                      <td data-label="Format (g)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
                         <input
                           type="text"
                           value={localRefGrams[ref.id] || ""}
@@ -409,11 +374,11 @@ export default function Commande() {
                         />
                       </td>
 
-                      <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
+                      <td data-label="Masse Blanche" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
                         {massKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg
                       </td>
 
-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                      <td className="responsive-td-action" style={{ padding: "8px 12px", textAlign: "center" }}>
                         {activeCommand.references.length > 1 && (
                           <button
                             type="button"
@@ -461,120 +426,7 @@ export default function Commande() {
 
 
 
-        {/* Command Milk Type Selector */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 4 }}>
-          {hasClassic && (
-            <div className="form-group">
-              <span className="form-label" style={{ marginBottom: 6 }}>
-                🥛 Type de lait requis pour le(s) produit(s) classique(s) (ex: yaourts)
-              </span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
-                  const isSelected = (activeCommand.milkType || "bio") === type
-                  const colors = {
-                    bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
-                    fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
-                    savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
-                    montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
-                  }[type]
 
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
-                      style={{
-                        padding: "10px 4px",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.8rem",
-                        fontWeight: isSelected ? "800" : "600",
-                        border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
-                        background: isSelected ? colors.bg : "#ffffff",
-                        color: isSelected ? colors.color : "var(--text-muted)",
-                        cursor: "pointer",
-                        transition: "var(--transition)",
-                        textAlign: "center"
-                      }}
-                    >
-                      {colors.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {hasSkyr && (
-            <div className="form-group">
-              <span className="form-label" style={{ marginBottom: 6 }}>
-                🥣 Recette & Lait requis pour le Skyr
-              </span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {([
-                  { key: "fcv3", label: "🧪 Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
-                  { key: "ecreme_savoie", label: "🏔️ Écrémé Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
-                  { key: "ecreme_montagne", label: "⛰️ Écrémé Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
-                ] as const).map((opt) => {
-                  const isSelected = activeCommand.skyrMilkType === opt.key
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
-                      style={{
-                        padding: "10px 4px",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.78rem",
-                        fontWeight: isSelected ? "800" : "600",
-                        border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
-                        background: isSelected ? opt.bg : "#ffffff",
-                        color: isSelected ? opt.color : "var(--text-muted)",
-                        cursor: "pointer",
-                        transition: "var(--transition)",
-                        textAlign: "center"
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
-        {hasSkyr && activeCommand.skyrMilkType === "fcv3" && (
-          <div style={{ 
-            gridColumn: "span 2",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            backgroundColor: "rgba(37, 99, 235, 0.05)",
-            padding: "10px 16px",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid rgba(37, 99, 235, 0.15)",
-            marginTop: 4
-          }}>
-            <input
-              type="checkbox"
-              id="directPasto"
-              checked={activeCommand.skyrDirectPasto || false}
-              onChange={(e) => dispatch(setSkyrDirectPasto({ id: activeCommand.id, direct: e.target.checked }))}
-              style={{
-                width: "18px",
-                height: "18px",
-                cursor: "pointer",
-                accentColor: "var(--primary)"
-              }}
-            />
-            <label htmlFor="directPasto" style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", cursor: "pointer" }}>
-              ⚡ Pasteurisation en direct (sans passer par un TLS)
-            </label>
-          </div>
-        )}
-
-        {/* Global Totals Summary */}
         <div className="info-section" style={{ marginTop: 12 }}>
           <div className="info-item">
             <span className="info-label">Pots totaux commandés</span>

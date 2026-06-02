@@ -61,7 +61,7 @@ export default function Lancement() {
 
   // Calculate allocated volumes of CF tanks for this active command
   const allocatedVolumes: { [key: string]: number } = {}
-  let remainingVolumeToDistribute = activeCommand.osmosedVolume
+  let remainingVolumeToDistribute = activeCommand.whiteMassKg
 
   CF_TANKS.forEach((tank) => {
     if (activeCommand.selectedCFs.includes(tank.name)) {
@@ -362,7 +362,7 @@ export default function Lancement() {
               </div>
               <div className="info-item">
                 <span className="info-label">Volume concentré CF</span>
-                <span className="info-value">{activeCommand.osmosedVolume.toFixed(0)} L</span>
+                <span className="info-value">{activeCommand.whiteMassKg.toFixed(0)} L</span>
               </div>
             </div>
           </div>

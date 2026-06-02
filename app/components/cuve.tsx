@@ -6,6 +6,7 @@ import {
   CF_TANKS,
   toggleCuveSelection,
   resetCuveSelection,
+  autoFillCF,
 } from "../lib/orderSlice"
 
 export default function Cuve() {
@@ -19,7 +20,7 @@ export default function Cuve() {
     return total + (tank?.capacity ?? 0)
   }, 0)
 
-  const volumeForCF = activeCommand.osmosedVolume
+  const volumeForCF = activeCommand.whiteMassKg
   const remainingVolume = Math.max(0, volumeForCF - selectedCapacity)
 
   // Calcule le volume distribué à chaque cuve sélectionnée
@@ -96,6 +97,11 @@ export default function Cuve() {
                         <span className="hide-mobile">Vol : </span>{allocatedVolumes[tank.name].toFixed(0)} L
                       </span>
                     )}
+                    {commands.filter(c => c.selectedCFs.includes(tank.name)).length > 0 && (
+                      <div style={{ fontSize: "0.6rem", color: "var(--text-muted)", padding: "2px 4px", background: "var(--bg-app)", borderRadius: "var(--radius-sm)", marginTop: 4 }}>
+                        <strong>Affecté à :</strong> {commands.filter(c => c.selectedCFs.includes(tank.name)).map(c => c.name).join(", ")}
+                      </div>
+                    )}
                   </div>
                 </div>
               )
@@ -127,6 +133,26 @@ export default function Cuve() {
             <span className="status-text" style={{ margin: 0 }}>
               Cuves sélectionnées : {activeCommand.selectedCFs.length ? activeCommand.selectedCFs.join(", ") : "Aucune"}
             </span>
+            <button
+              type="button"
+              onClick={() => dispatch(autoFillCF())}
+              className="btn btn-secondary"
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.75rem",
+                color: "var(--primary)",
+                borderColor: "var(--primary-border)",
+                borderRadius: "var(--radius-sm)",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                backgroundColor: "rgba(37, 99, 235, 0.05)",
+                transition: "var(--transition)"
+              }}
+            >
+              Remplissage automatique
+            </button>
             {activeCommand.isCFManual && (
               <button
                 type="button"

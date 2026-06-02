@@ -64,6 +64,21 @@ export default function Simulation() {
       gradient: "linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%)",
       color: "var(--violet)"
     },
+    creme: {
+      label: "🧈 Crème",
+      gradient: "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)",
+      color: "var(--danger)"
+    },
+    ecreme_savoie: {
+      label: "💧 Écrémé Savoie",
+      gradient: "linear-gradient(180deg, #fde68a 0%, #f59e0b 100%)",
+      color: "var(--warning)"
+    },
+    ecreme_montagne: {
+      label: "💧 Écrémé Montagne",
+      gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)",
+      color: "var(--violet)"
+    }
   }
 
   return (
@@ -138,13 +153,30 @@ export default function Simulation() {
                           <strong>{getCalendarTime(cmdRes.pastoEnd)}</strong>
                         </div>
                         <div style={{ marginTop: 4 }}>
-                          <span style={{ color: "var(--text-muted)" }}>Maturation terminée :</span><br />
+                          <span style={{ color: "var(--text-muted)" }}>Maturation (début cond.) :</span><br />
                           <strong>{getCalendarTime(cmdRes.maturationEnd)}</strong>
                         </div>
                         <div style={{ marginTop: 4 }}>
                           <span style={{ color: "var(--success-hover)" }}>Conditionnement terminé :</span><br />
                           <strong style={{ color: "var(--success-hover)" }}>{getCalendarTime(cmdRes.packagingEnd)}</strong>
                         </div>
+                        
+                        {cmdRes.firstTankName && (
+                          <>
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "var(--text-muted)" }}>Fin maturation 1ère cuve ({cmdRes.firstTankName}) :</span><br />
+                              <strong>{cmdRes.firstTankMaturationEnd ? getCalendarTime(cmdRes.firstTankMaturationEnd) : "-"}</strong>
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "var(--text-muted)" }}>Fin 1ère cuve ({cmdRes.firstTankName}) :</span><br />
+                              <strong>{cmdRes.firstTankEmptyEnd ? getCalendarTime(cmdRes.firstTankEmptyEnd) : "-"}</strong>
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "var(--text-muted)" }}>Début lavage ({cmdRes.firstTankName}) :</span><br />
+                              <strong>{cmdRes.firstTankEmptyEnd ? getCalendarTime(cmdRes.firstTankEmptyEnd) : "-"}</strong>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {cmdRes.referencesResults && cmdRes.referencesResults.length > 0 && (

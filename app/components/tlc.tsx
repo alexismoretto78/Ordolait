@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { TLC_TANKS, addBatch, deleteBatch, getTLCStats, MilkType } from "../lib/orderSlice"
+import { TLC_TANKS, addBatch, deleteBatch, getTLCStats, MilkType, OrderState } from "../lib/orderSlice"
 
 export default function TLC() {
   const dispatch = useDispatch()
@@ -27,7 +27,7 @@ export default function TLC() {
     return `${yy}${mm}${dd}${hh}${min}`
   }
 
-  const handleAddBatch = (tankKey: "tlc1" | "tlc2" | "tlc3" | "tlc4") => {
+  const handleAddBatch = (tankKey: keyof OrderState["tlcBatches"]) => {
     const batches = tlcBatches[tankKey]
     const activeType = batches.length > 0 ? batches[0].milkType : newBatchMilkType
 
@@ -98,15 +98,39 @@ export default function TLC() {
       bgActive: "rgba(139, 92, 246, 0.12)",
       emoji: "⛰️"
     },
+    creme: {
+      label: "Crème",
+      color: "var(--danger)",
+      gradient: "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)",
+      shadow: "0 0 12px rgba(239, 68, 68, 0.3)",
+      bgActive: "rgba(239, 68, 68, 0.12)",
+      emoji: "🧈"
+    },
+    ecreme_savoie: {
+      label: "Écrémé Savoie",
+      color: "var(--warning)",
+      gradient: "linear-gradient(180deg, #fde68a 0%, #f59e0b 100%)",
+      shadow: "0 0 12px rgba(245, 158, 11, 0.3)",
+      bgActive: "rgba(245, 158, 11, 0.12)",
+      emoji: "💧"
+    },
+    ecreme_montagne: {
+      label: "Écrémé Montagne",
+      color: "var(--violet)",
+      gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)",
+      shadow: "0 0 12px rgba(139, 92, 246, 0.3)",
+      bgActive: "rgba(139, 92, 246, 0.12)",
+      emoji: "💧"
+    }
   }
 
   // Calculate global totals
   let totalVolume = 0
-  TLC_TANKS.forEach((_, idx) => {
-    const key = `tlc${idx + 1}` as keyof typeof tlcBatches
+  TLC_TANKS.forEach((tank) => {
+    const key = tank.key as keyof typeof tlcBatches
     totalVolume += getTLCStats(tlcBatches[key]).volume
   })
-  const totalCapacity = 120000
+  const totalCapacity = 135000
   const totalPct = (totalVolume / totalCapacity) * 100
 
   return (
@@ -135,12 +159,12 @@ export default function TLC() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
-        {TLC_TANKS.map((tank, idx) => {
-          const key = `tlc${idx + 1}` as "tlc1" | "tlc2" | "tlc3" | "tlc4"
+        {TLC_TANKS.map((tank) => {
+          const key = tank.key as keyof typeof tlcBatches
           const batches = tlcBatches[key]
           const stats = getTLCStats(batches)
           const pct = (stats.volume / tank.capacity) * 100
-          
+
           // Determine the tank milk type based on active batches or form selection
           const currentType = batches.length > 0 ? batches[0].milkType : newBatchMilkType
           const config = milkTypeConfigs[currentType]
@@ -175,24 +199,24 @@ export default function TLC() {
               {/* Graphical Cylinder & averages */}
               <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 20, backgroundColor: "var(--bg-app)", padding: 12, borderRadius: "var(--radius-md)" }}>
                 {/* Cylinder */}
-                <div 
-                  style={{ 
-                    position: "relative", 
-                    width: "70px", 
-                    height: "90px", 
-                    background: "#ffffff", 
-                    borderRadius: "14px 14px 18px 18px", 
+                <div
+                  style={{
+                    position: "relative",
+                    width: "70px",
+                    height: "90px",
+                    background: "#ffffff",
+                    borderRadius: "14px 14px 18px 18px",
                     border: "2px solid #cbd5e1",
-                    overflow: "hidden", 
+                    overflow: "hidden",
                     display: "flex",
                     alignItems: "flex-end"
                   }}
                 >
-                  <div 
-                    style={{ 
-                      width: "100%", 
-                      height: `${pct}%`, 
-                      background: config.gradient, 
+                  <div
+                    style={{
+                      width: "100%",
+                      height: `${pct}%`,
+                      background: config.gradient,
                       transition: "height 0.4s ease-out",
                       position: "relative",
                       borderRadius: "0 0 6px 6px"
@@ -209,7 +233,7 @@ export default function TLC() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>VOLUME TOTAL</span>
                   <strong style={{ fontSize: "1.1rem", color: "#0f172a" }}>{stats.volume.toLocaleString()} L</strong>
-                  
+
                   {batches.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 4, borderTop: "1px dashed #cbd5e1", paddingTop: 4 }}>
                       <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -236,7 +260,7 @@ export default function TLC() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "160px", overflowY: "auto", paddingRight: 4 }}>
                     {batches.map((batch) => (
-                      <div 
+                      <div
                         key={batch.id}
                         style={{
                           backgroundColor: "#f8fafc",
@@ -286,7 +310,7 @@ export default function TLC() {
                     onClick={() => {
                       // If empty, set default milkType of this tank
                       if (batches.length === 0) {
-                        const defaultType = key === "tlc1" ? "bio" : key === "tlc2" ? "fcv3" : key === "tlc3" ? "savoie" : "montagne"
+                        const defaultType = key === "tlc1" ? "bio" : key === "tlc2" ? "fcv3" : key === "tlc3" ? "savoie" : key === "tankPermeat" ? "creme" : "montagne"
                         setNewBatchMilkType(defaultType)
                       }
                       setShowAddForm(prev => ({ ...prev, [key]: true }))
@@ -300,9 +324,9 @@ export default function TLC() {
                   <div style={{ backgroundColor: "#f8fafc", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <strong style={{ fontSize: "0.8rem", color: "var(--primary)" }}>Nouveau Lot à réceptionner</strong>
-                      <button 
-                        type="button" 
-                        onClick={() => setShowAddForm(prev => ({ ...prev, [key]: false }))} 
+                      <button
+                        type="button"
+                        onClick={() => setShowAddForm(prev => ({ ...prev, [key]: false }))}
                         style={{ border: "none", background: "none", cursor: "pointer", fontWeight: 700, color: "var(--text-muted)" }}
                       >
                         ✕
@@ -313,7 +337,7 @@ export default function TLC() {
                     {batches.length === 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>Type de Lait</span>
-                        <select 
+                        <select
                           value={newBatchMilkType}
                           onChange={(e) => setNewBatchMilkType(e.target.value as MilkType)}
                           style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)" }}
@@ -337,7 +361,7 @@ export default function TLC() {
                           style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)" }}
                         />
                       </div>
-                      
+
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>Protéines (g/L)</span>
