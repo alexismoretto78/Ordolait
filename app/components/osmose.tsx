@@ -95,6 +95,22 @@ export default function Osmose() {
             <span className="info-label">Volume lait cru brut requis</span>
             <span className="info-value">{activeCommand.milkReceivedVolume.toFixed(1)} L</span>
           </div>
+
+          {activeCommand.references.filter(r => !r.name.toLowerCase().includes("skyr") && !r.name.toLowerCase().includes("nature")).reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0) > 0 && (
+            <div className="info-item">
+              <span className="info-label">Volume apporté par le sucre</span>
+              <span className="info-value" style={{ color: "var(--accent)" }}>
+                {(
+                  activeCommand.references
+                    .filter(r => !r.name.toLowerCase().includes("skyr") && !r.name.toLowerCase().includes("nature"))
+                    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0) -
+                  (activeCommand.references
+                    .filter(r => !r.name.toLowerCase().includes("skyr") && !r.name.toLowerCase().includes("nature"))
+                    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0) / 1.05)
+                ).toFixed(1)} L
+              </span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
