@@ -5,6 +5,7 @@ import { RootState } from "../lib/store"
 import {
   CF_TANKS,
   toggleCuveSelection,
+  resetCuveSelection,
 } from "../lib/orderSlice"
 
 export default function Cuve() {
@@ -52,8 +53,7 @@ export default function Cuve() {
               const isDisabled = 
                 !activeCommand.pasteurized ||
                 (isCF20 && !hasSkyr) ||
-                (!isCF20 && !hasClassic) ||
-                (!selected && selectedCapacity >= volumeForCF)
+                (!isCF20 && !hasClassic)
 
               return (
                 <div
@@ -122,11 +122,35 @@ export default function Cuve() {
           </div>
         </div>
 
-        <div style={{ marginTop: 8 }}>
-          <span className="status-text" style={{ marginRight: 8 }}>
-            Cuves sélectionnées : {activeCommand.selectedCFs.length ? activeCommand.selectedCFs.join(", ") : "Aucune"}
-          </span>
-          <span className="status-text">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <span className="status-text" style={{ margin: 0 }}>
+              Cuves sélectionnées : {activeCommand.selectedCFs.length ? activeCommand.selectedCFs.join(", ") : "Aucune"}
+            </span>
+            {activeCommand.isCFManual && (
+              <button
+                type="button"
+                onClick={() => dispatch(resetCuveSelection({ id: activeCommand.id }))}
+                className="btn btn-secondary"
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "0.75rem",
+                  color: "var(--primary)",
+                  borderColor: "var(--primary-border)",
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  backgroundColor: "rgba(37, 99, 235, 0.05)",
+                  transition: "var(--transition)"
+                }}
+              >
+                🔄 Réinitialiser la sélection automatique
+              </button>
+            )}
+          </div>
+          <span className="status-text" style={{ margin: 0 }}>
             Statut : {activeCommand.status}
           </span>
         </div>

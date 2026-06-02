@@ -49,6 +49,7 @@ export type Command = {
   isSkyr: boolean
   skyrMilkType?: "fcv3" | "ecreme_savoie" | "ecreme_montagne"
   skyrDirectPasto?: boolean
+  isCFManual?: boolean
 }
 
 export type CommandSimResult = {
@@ -210,6 +211,7 @@ const initialCommand = (id: string, name: string): Command => {
     isSkyr: false,
     skyrMilkType: "fcv3",
     skyrDirectPasto: false,
+    isCFManual: false,
   }
 }
 
@@ -690,14 +692,24 @@ const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => 
   if (active.osmosedVolume > 0) {
     active.pasteurized = true
 
-    if (hasSkyr && hasClassic) {
-      const nonSkyrCFs = selectCuvesForVolume(classicOsmosedVolume, false)
-      // Force CF20 to be present for Skyr, and select others for classic
-      active.selectedCFs = Array.from(new Set(["CF20", ...nonSkyrCFs]))
-    } else if (hasSkyr) {
-      active.selectedCFs = ["CF20"]
+    if (active.isCFManual) {
+      // Keep manual selection, but filter out incompatible cuves
+      active.selectedCFs = active.selectedCFs.filter(name => {
+        const isCF20 = name === "CF20"
+        if (isCF20 && !hasSkyr) return false
+        if (!isCF20 && !hasClassic) return false
+        return true
+      })
     } else {
-      active.selectedCFs = selectCuvesForVolume(classicOsmosedVolume, false)
+      if (hasSkyr && hasClassic) {
+        const nonSkyrCFs = selectCuvesForVolume(classicOsmosedVolume, false)
+        // Force CF20 to be present for Skyr, and select others for classic
+        active.selectedCFs = Array.from(new Set(["CF20", ...nonSkyrCFs]))
+      } else if (hasSkyr) {
+        active.selectedCFs = ["CF20"]
+      } else {
+        active.selectedCFs = selectCuvesForVolume(classicOsmosedVolume, false)
+      }
     }
 
     initializeNewCFs(active)
@@ -1838,13 +1850,21 @@ const orderSlice = createSlice({
         if (selected) {
           active.selectedCFs = active.selectedCFs.filter((name) => name !== action.payload)
         } else {
-          const currentCapacity = getSelectedCFCapacity(active.selectedCFs)
-          if (currentCapacity >= active.osmosedVolume) return
           active.selectedCFs = [...active.selectedCFs, action.payload]
         }
+        active.isCFManual = true
         initializeNewCFs(active)
         checkIfDispatched(active)
         active.status = active.selectedCFs.length > 0 ? "cuve" : active.status
+        syncActiveCommandToRoot(state)
+      }
+      state.simulationDone = false
+    },
+    resetCuveSelection(state, action: PayloadAction<{ id: string }>) {
+      const cmd = state.commands.find(c => c.id === action.payload.id)
+      if (cmd) {
+        cmd.isCFManual = false
+        recalculateActiveCommandMetrics(state, cmd)
         syncActiveCommandToRoot(state)
       }
       state.simulationDone = false
@@ -1955,6 +1975,7 @@ export const {
   autoFillTLS,
   toggleTLSSelection,
   toggleCuveSelection,
+  resetCuveSelection,
   setProductionStartTime,
   setCommandIsSkyr,
   setSkyrMilkType,
