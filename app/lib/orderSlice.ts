@@ -575,102 +575,129 @@ const updateActiveCommandFromRoot = (state: OrderState) => {
 }
 
 const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => {
-  // Detect if Skyr is active based on reference names containing "skyr" (case-insensitive)
+  // 1. Detect which parts are active
+  const hasSkyr = active.references.some(r => r.name.toLowerCase().includes("skyr"))
+  const hasClassic = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
+
   const wasSkyr = active.isSkyr
-  active.isSkyr = active.references.some(r => r.name.toLowerCase().includes("skyr"))
+  active.isSkyr = hasSkyr
 
   if (active.isSkyr && !wasSkyr) {
-    active.skyrMilkType = "fcv3"
-    active.skyrDirectPasto = false
-    
-    const hasNonSkyr = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
-    if (hasNonSkyr) {
-      const totalWhiteMass = active.whiteMassKg || 1
-      const nonSkyrWhiteMass = active.references
-        .filter(r => !r.name.toLowerCase().includes("skyr"))
-        .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-      const nonSkyrRatio = nonSkyrWhiteMass / totalWhiteMass
-      const nonSkyrOsmosedVolume = active.osmosedVolume * nonSkyrRatio
-      active.selectedCFs = ["CF20", ...selectCuvesForVolume(nonSkyrOsmosedVolume, false)]
-    } else {
-      active.selectedCFs = ["CF20"]
+    if (active.skyrMilkType === undefined) {
+      active.skyrMilkType = "fcv3"
     }
-  } else if (!active.isSkyr && wasSkyr) {
-    active.selectedCFs = selectCuvesForVolume(active.osmosedVolume, false)
+    if (active.skyrDirectPasto === undefined) {
+      active.skyrDirectPasto = false
+    }
   }
 
-  // 1. Calculate total white mass from product references
-  active.whiteMassKg = active.references.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+  // Calculate white mass for each part
+  const skyrWhiteMass = active.references
+    .filter(r => r.name.toLowerCase().includes("skyr"))
+    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+  
+  const classicWhiteMass = active.references
+    .filter(r => !r.name.toLowerCase().includes("skyr"))
+    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+
+  active.whiteMassKg = skyrWhiteMass + classicWhiteMass
   active.status = active.references.length > 0 ? "order" : "idle"
 
-  // 2. Fetch protein levels from TLC batches of target milkType
-  const requiredType = active.isSkyr
-    ? (active.skyrMilkType === "fcv3" ? "fcv3" : active.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
-    : (active.milkType || "bio")
-
-  let totalVol = 0
-  let totalProtWeight = 0
+  // 2. Fetch protein level (Ci) for Skyr milk type
+  const skyrRequiredType = active.skyrMilkType === "fcv3" 
+    ? "fcv3" 
+    : (active.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
+  
+  let skyrTotalVol = 0
+  let skyrTotalProt = 0
   const keys: (keyof typeof state.tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
   keys.forEach(k => {
     state.tlcBatches[k].forEach(b => {
-      if (b.milkType === requiredType) {
-        totalVol += b.volume
-        totalProtWeight += b.volume * b.protein
+      if (b.milkType === skyrRequiredType) {
+        skyrTotalVol += b.volume
+        skyrTotalProt += b.volume * b.protein
       }
     })
   })
-  const avgProtein = totalVol > 0 ? totalProtWeight / totalVol : 33.0
-  active.milkReceptionValue = Number(avgProtein.toFixed(3))
+  const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
 
-  if (active.whiteMassKg > 0 && active.milkReceptionValue > 0 && active.targetValue > 0) {
-    if (active.isSkyr && active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-      active.milkReceivedVolume = active.whiteMassKg
-      active.tlsVolumes = { tls1: 0, tls2: 0, tls3: 0 }
-      active.selectedTLSs = []
+  // Fetch protein level (Ci) for Classic milk type
+  const classicRequiredType = active.milkType || "bio"
+  let classicTotalVol = 0
+  let classicTotalProt = 0
+  keys.forEach(k => {
+    state.tlcBatches[k].forEach(b => {
+      if (b.milkType === classicRequiredType) {
+        classicTotalVol += b.volume
+        classicTotalProt += b.volume * b.protein
+      }
+    })
+  })
+  const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
+
+  // 3. Compute volumes independently
+  let skyrMilkReceivedVolume = 0
+  let skyrOsmosedVolume = 0
+  let skyrTLSVolumes = { tls1: 0, tls2: 0, tls3: 0 }
+  let skyrSelectedTLSs: string[] = []
+
+  if (skyrWhiteMass > 0) {
+    if (active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
+      skyrMilkReceivedVolume = skyrWhiteMass
+      skyrOsmosedVolume = skyrWhiteMass
     } else {
-      active.milkReceivedVolume = computeRequiredRawMilk(
-        active.whiteMassKg,
-        active.milkReceptionValue,
-        active.targetValue
-      )
-      active.tlsVolumes = distributeToTLS(active.milkReceivedVolume)
-      active.selectedTLSs = selectTLSForVolume(active.milkReceivedVolume)
+      skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, active.targetValue)
+      skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, active.targetValue)
+      skyrTLSVolumes = distributeToTLS(skyrMilkReceivedVolume)
+      skyrSelectedTLSs = selectTLSForVolume(skyrMilkReceivedVolume)
     }
-  } else {
-    active.milkReceivedVolume = 0
-    active.tlsVolumes = { tls1: 0, tls2: 0, tls3: 0 }
-    active.selectedTLSs = []
   }
 
-  if (active.isSkyr && active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-    active.osmosedVolume = active.milkReceivedVolume
-  } else {
-    active.osmosedVolume = computeOsmosedVolume(
-      active.milkReceivedVolume,
-      active.milkReceptionValue,
-      active.targetValue
-    )
+  let classicMilkReceivedVolume = 0
+  let classicOsmosedVolume = 0
+  let classicTLSVolumes = { tls1: 0, tls2: 0, tls3: 0 }
+  let classicSelectedTLSs: string[] = []
+
+  if (classicWhiteMass > 0) {
+    classicMilkReceivedVolume = computeRequiredRawMilk(classicWhiteMass, classicCi, active.targetValue)
+    classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, active.targetValue)
+    classicTLSVolumes = distributeToTLS(classicMilkReceivedVolume)
+    classicSelectedTLSs = selectTLSForVolume(classicMilkReceivedVolume)
   }
 
+  // 4. Combine parts
+  active.milkReceivedVolume = skyrMilkReceivedVolume + classicMilkReceivedVolume
+  active.osmosedVolume = skyrOsmosedVolume + classicOsmosedVolume
+
+  active.tlsVolumes = {
+    tls1: Number((skyrTLSVolumes.tls1 + classicTLSVolumes.tls1).toFixed(3)),
+    tls2: Number((skyrTLSVolumes.tls2 + classicTLSVolumes.tls2).toFixed(3)),
+    tls3: Number((skyrTLSVolumes.tls3 + classicTLSVolumes.tls3).toFixed(3)),
+  }
+
+  const allSelectedTLSs = new Set([...skyrSelectedTLSs, ...classicSelectedTLSs])
+  active.selectedTLSs = Array.from(allSelectedTLSs)
+
+  // Weighted average protein level
+  if (active.milkReceivedVolume > 0) {
+    const avgProt = (skyrCi * skyrMilkReceivedVolume + classicCi * classicMilkReceivedVolume) / active.milkReceivedVolume
+    active.milkReceptionValue = Number(avgProt.toFixed(3))
+  } else {
+    active.milkReceptionValue = 33.0
+  }
+
+  // 5. Select Cuves (CF)
   if (active.osmosedVolume > 0) {
     active.pasteurized = true
-    
-    const hasSkyr = active.references.some(r => r.name.toLowerCase().includes("skyr"))
-    const hasNonSkyr = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
-    
-    if (hasSkyr && hasNonSkyr) {
-      const totalWhiteMass = active.whiteMassKg
-      const nonSkyrWhiteMass = active.references
-        .filter(r => !r.name.toLowerCase().includes("skyr"))
-        .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-      
-      const nonSkyrRatio = totalWhiteMass > 0 ? nonSkyrWhiteMass / totalWhiteMass : 0
-      const nonSkyrOsmosedVolume = active.osmosedVolume * nonSkyrRatio
-      
-      const nonSkyrCFs = selectCuvesForVolume(nonSkyrOsmosedVolume, false)
-      active.selectedCFs = ["CF20", ...nonSkyrCFs]
+
+    if (hasSkyr && hasClassic) {
+      const nonSkyrCFs = selectCuvesForVolume(classicOsmosedVolume, false)
+      // Force CF20 to be present for Skyr, and select others for classic
+      active.selectedCFs = Array.from(new Set(["CF20", ...nonSkyrCFs]))
+    } else if (hasSkyr) {
+      active.selectedCFs = ["CF20"]
     } else {
-      active.selectedCFs = selectCuvesForVolume(active.osmosedVolume, active.isSkyr)
+      active.selectedCFs = selectCuvesForVolume(classicOsmosedVolume, false)
     }
 
     initializeNewCFs(active)
@@ -680,17 +707,41 @@ const recalculateActiveCommandMetrics = (state: OrderState, active: Command) => 
     active.selectedCFs = []
   }
 
-  if (active.isSkyr && active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-    active.timing.transferTime = computeTransferTime(active.milkReceivedVolume)
-    active.timing.osmoseTime = 0
-    active.timing.powderTime = 0
-    active.timing.pastoTime = computePastoTime(active.osmosedVolume)
-  } else {
-    active.timing.transferTime = computeTransferTime(active.milkReceivedVolume)
-    active.timing.osmoseTime = computeOsmoseTime(active.milkReceivedVolume, active.milkReceptionValue, active.targetValue)
-    active.timing.powderTime = computePowderTime(active.osmosedVolume)
-    active.timing.pastoTime = computePastoTime(active.osmosedVolume)
+  // 6. Calculate Timing sequentially (sum of independent timings)
+  let skyrTransferTime = 0
+  let skyrOsmoseTime = 0
+  let skyrPowderTime = 0
+  let skyrPastoTime = 0
+
+  if (skyrWhiteMass > 0) {
+    skyrTransferTime = computeTransferTime(skyrMilkReceivedVolume)
+    if (active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
+      skyrOsmoseTime = 0
+      skyrPowderTime = 0
+      skyrPastoTime = computePastoTime(skyrOsmosedVolume)
+    } else {
+      skyrOsmoseTime = computeOsmoseTime(skyrMilkReceivedVolume, skyrCi, active.targetValue)
+      skyrPowderTime = computePowderTime(skyrOsmosedVolume)
+      skyrPastoTime = computePastoTime(skyrOsmosedVolume)
+    }
   }
+
+  let classicTransferTime = 0
+  let classicOsmoseTime = 0
+  let classicPowderTime = 0
+  let classicPastoTime = 0
+
+  if (classicWhiteMass > 0) {
+    classicTransferTime = computeTransferTime(classicMilkReceivedVolume)
+    classicOsmoseTime = computeOsmoseTime(classicMilkReceivedVolume, classicCi, active.targetValue)
+    classicPowderTime = computePowderTime(classicOsmosedVolume)
+    classicPastoTime = computePastoTime(classicOsmosedVolume)
+  }
+
+  active.timing.transferTime = skyrTransferTime + classicTransferTime
+  active.timing.osmoseTime = skyrOsmoseTime + classicOsmoseTime
+  active.timing.powderTime = skyrPowderTime + classicPowderTime
+  active.timing.pastoTime = skyrPastoTime + classicPastoTime
   active.timing.maturationTime = DEFAULT_MATURATION_MINUTES
 }
 
@@ -753,46 +804,79 @@ export const runMultiCommandSimulation = (
   const commandCFSelectedList: { [commandId: string]: string[] } = {}
   
   commands.forEach((cmd) => {
+    const skyrRefs = cmd.references.filter(r => r.name.toLowerCase().includes("skyr"))
+    const classicRefs = cmd.references.filter(r => !r.name.toLowerCase().includes("skyr"))
+
+    const skyrWhiteMass = skyrRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+    const classicWhiteMass = classicRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+
+    // Find protein level for Skyr milk type
+    const skyrRequiredType = cmd.skyrMilkType === "fcv3" ? "fcv3" : (cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
+    let skyrTotalVol = 0
+    let skyrTotalProt = 0
+    const keys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+    keys.forEach(k => {
+      tlcBatches[k].forEach(b => {
+        if (b.milkType === skyrRequiredType) {
+          skyrTotalVol += b.volume
+          skyrTotalProt += b.volume * b.protein
+        }
+      })
+    })
+    const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
+
+    // Find protein level for Classic milk type
+    const classicRequiredType = cmd.milkType || "bio"
+    let classicTotalVol = 0
+    let classicTotalProt = 0
+    keys.forEach(k => {
+      tlcBatches[k].forEach(b => {
+        if (b.milkType === classicRequiredType) {
+          classicTotalVol += b.volume
+          classicTotalProt += b.volume * b.protein
+        }
+      })
+    })
+    const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
+
+    let skyrMilkReceivedVolume = 0
+    let skyrOsmosedVolume = 0
+    if (skyrWhiteMass > 0) {
+      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
+        skyrMilkReceivedVolume = skyrWhiteMass
+        skyrOsmosedVolume = skyrWhiteMass
+      } else {
+        skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, cmd.targetValue)
+        skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, cmd.targetValue)
+      }
+    }
+
+    let classicMilkReceivedVolume = 0
+    let classicOsmosedVolume = 0
+    if (classicWhiteMass > 0) {
+      classicMilkReceivedVolume = computeRequiredRawMilk(classicWhiteMass, classicCi, cmd.targetValue)
+      classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, cmd.targetValue)
+    }
+
+    const hasSkyr = skyrWhiteMass > 0
+    const hasClassic = classicWhiteMass > 0
+
     let selectedCFs = cmd.selectedCFs
     if (selectedCFs.length === 0) {
-      const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
-      const hasNonSkyr = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
-      if (hasSkyr && hasNonSkyr) {
-        const totalWhiteMass = cmd.whiteMassKg
-        const nonSkyrWhiteMass = cmd.references
-          .filter(r => !r.name.toLowerCase().includes("skyr"))
-          .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-        
-        const nonSkyrRatio = totalWhiteMass > 0 ? nonSkyrWhiteMass / totalWhiteMass : 0
-        const nonSkyrOsmosedVolume = cmd.osmosedVolume * nonSkyrRatio
-        
-        selectedCFs = ["CF20", ...selectCuvesForVolume(nonSkyrOsmosedVolume, false)]
+      if (hasSkyr && hasClassic) {
+        const nonSkyrCFs = selectCuvesForVolume(classicOsmosedVolume, false)
+        selectedCFs = ["CF20", ...nonSkyrCFs]
+      } else if (hasSkyr) {
+        selectedCFs = ["CF20"]
       } else {
-        selectedCFs = selectCuvesForVolume(cmd.osmosedVolume, cmd.isSkyr)
+        selectedCFs = selectCuvesForVolume(classicOsmosedVolume, false)
       }
     }
     commandCFSelectedList[cmd.id] = selectedCFs
     
     const cfAllocatedVolumes: { [tank: string]: number } = {}
-    const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
-    const hasNonSkyr = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
-
-    const totalWhiteMass = cmd.whiteMassKg || 1
-    const skyrWhiteMass = cmd.references
-      .filter(r => r.name.toLowerCase().includes("skyr"))
-      .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const nonSkyrWhiteMass = cmd.references
-      .filter(r => !r.name.toLowerCase().includes("skyr"))
-      .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-
-    const skyrRatio = skyrWhiteMass / totalWhiteMass
-    const nonSkyrRatio = nonSkyrWhiteMass / totalWhiteMass
-
-    const skyrOsmosedVolume = cmd.osmosedVolume * skyrRatio
-    const nonSkyrOsmosedVolume = cmd.osmosedVolume * nonSkyrRatio
-
     let remSkyrVol = skyrOsmosedVolume
-    let remNonSkyrVol = nonSkyrOsmosedVolume
+    let remNonSkyrVol = classicOsmosedVolume
 
     selectedCFs.forEach(cfName => {
       const tank = CF_TANKS.find(t => t.name === cfName)
@@ -814,52 +898,145 @@ export const runMultiCommandSimulation = (
   // Build sequential list of all active TLS tasks across all commands
   const tlsList: TLSToSchedule[] = []
   commands.forEach((cmd, cmdIdx) => {
-    if (cmd.isSkyr && cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
-      // Direct pasteurisation (FCV3): does not use TLS!
-      let remainingToDraw = cmd.milkReceivedVolume
-      const rawMilkType = "fcv3"
-      let totalProtDrawn = 0
-      let actualDrawn = 0
+    const skyrRefs = cmd.references.filter(r => r.name.toLowerCase().includes("skyr"))
+    const classicRefs = cmd.references.filter(r => !r.name.toLowerCase().includes("skyr"))
 
-      const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-      for (const k of tlcKeys) {
-        if (remainingToDraw <= 0) break
-        const batches = tlcBatches[k]
-        for (let i = 0; i < batches.length; i++) {
-          if (remainingToDraw <= 0) break
-          const b = batches[i]
-          if (b.milkType === rawMilkType && b.volume > 0) {
-            const draw = Math.min(b.volume, remainingToDraw)
-            b.volume = Number((b.volume - draw).toFixed(3))
-            remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-            totalProtDrawn += draw * b.protein
-            actualDrawn += draw
-          }
+    const skyrWhiteMass = skyrRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+    const classicWhiteMass = classicRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+
+    const skyrRequiredType = cmd.skyrMilkType === "fcv3" ? "fcv3" : (cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
+    let skyrTotalVol = 0
+    let skyrTotalProt = 0
+    const keys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+    keys.forEach(k => {
+      tlcBatches[k].forEach(b => {
+        if (b.milkType === skyrRequiredType) {
+          skyrTotalVol += b.volume
+          skyrTotalProt += b.volume * b.protein
         }
-        tlcBatches[k] = batches.filter(b => b.volume > 0)
-      }
-
-      tlsList.push({
-        commandId: cmd.id,
-        commandIdx: cmdIdx,
-        commandName: cmd.name,
-        tlsKey: "direct",
-        rawVolume: cmd.milkReceivedVolume,
-        osmosedVolume: cmd.osmosedVolume,
-        milkType: "fcv3",
       })
-    } else {
-      // Normal TLS-based processing
-      const tlsAlloc = distributeToTLS(cmd.milkReceivedVolume)
+    })
+    const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
+
+    const classicRequiredType = cmd.milkType || "bio"
+    let classicTotalVol = 0
+    let classicTotalProt = 0
+    keys.forEach(k => {
+      tlcBatches[k].forEach(b => {
+        if (b.milkType === classicRequiredType) {
+          classicTotalVol += b.volume
+          classicTotalProt += b.volume * b.protein
+        }
+      })
+    })
+    const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
+
+    let skyrMilkReceivedVolume = 0
+    let skyrOsmosedVolume = 0
+    if (skyrWhiteMass > 0) {
+      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
+        skyrMilkReceivedVolume = skyrWhiteMass
+        skyrOsmosedVolume = skyrWhiteMass
+      } else {
+        skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, cmd.targetValue)
+        skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, cmd.targetValue)
+      }
+    }
+
+    let classicMilkReceivedVolume = 0
+    let classicOsmosedVolume = 0
+    if (classicWhiteMass > 0) {
+      classicMilkReceivedVolume = computeRequiredRawMilk(classicWhiteMass, classicCi, cmd.targetValue)
+      classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, cmd.targetValue)
+    }
+
+    // Schedule Skyr Part (if any)
+    if (skyrWhiteMass > 0) {
+      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
+        let remainingToDraw = skyrMilkReceivedVolume
+        const rawMilkType = "fcv3"
+        
+        const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+        for (const k of tlcKeys) {
+          if (remainingToDraw <= 0) break
+          const batches = tlcBatches[k]
+          for (let i = 0; i < batches.length; i++) {
+            if (remainingToDraw <= 0) break
+            const b = batches[i]
+            if (b.milkType === rawMilkType && b.volume > 0) {
+              const draw = Math.min(b.volume, remainingToDraw)
+              b.volume = Number((b.volume - draw).toFixed(3))
+              remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+            }
+          }
+          tlcBatches[k] = batches.filter(b => b.volume > 0)
+        }
+
+        tlsList.push({
+          commandId: cmd.id,
+          commandIdx: cmdIdx,
+          commandName: cmd.name + " (Skyr)",
+          tlsKey: "direct",
+          rawVolume: skyrMilkReceivedVolume,
+          osmosedVolume: skyrOsmosedVolume,
+          milkType: "fcv3",
+        })
+      } else {
+        const tlsAlloc = distributeToTLS(skyrMilkReceivedVolume)
+        const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
+        activeTLSKeys.forEach((key) => {
+          const vol = tlsAlloc[key]
+          if (vol > 0) {
+            let remainingToDraw = vol
+            const rawMilkType = cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne"
+            
+            let totalProtDrawn = 0
+            let actualDrawn = 0
+
+            const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+            for (const k of tlcKeys) {
+              if (remainingToDraw <= 0) break
+              const batches = tlcBatches[k]
+              for (let i = 0; i < batches.length; i++) {
+                if (remainingToDraw <= 0) break
+                const b = batches[i]
+                if (b.milkType === rawMilkType && b.volume > 0) {
+                  const draw = Math.min(b.volume, remainingToDraw)
+                  b.volume = Number((b.volume - draw).toFixed(3))
+                  remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+                  totalProtDrawn += draw * b.protein
+                  actualDrawn += draw
+                }
+              }
+              tlcBatches[k] = batches.filter(b => b.volume > 0)
+            }
+
+            const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : skyrCi
+            const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
+            
+            tlsList.push({
+              commandId: cmd.id,
+              commandIdx: cmdIdx,
+              commandName: cmd.name + " (Skyr)",
+              tlsKey: key,
+              rawVolume: vol,
+              osmosedVolume: osmVol,
+              milkType: rawMilkType,
+            })
+          }
+        })
+      }
+    }
+
+    // Schedule Classic Part (if any)
+    if (classicWhiteMass > 0) {
+      const tlsAlloc = distributeToTLS(classicMilkReceivedVolume)
       const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
       activeTLSKeys.forEach((key) => {
         const vol = tlsAlloc[key]
         if (vol > 0) {
-          // Calculate the dynamic protein for this volume of drawn milk
           let remainingToDraw = vol
-          const rawMilkType = cmd.isSkyr 
-            ? (cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
-            : (cmd.milkType || "bio")
+          const rawMilkType = cmd.milkType || "bio"
           
           let totalProtDrawn = 0
           let actualDrawn = 0
@@ -882,13 +1059,13 @@ export const runMultiCommandSimulation = (
             tlcBatches[k] = batches.filter(b => b.volume > 0)
           }
 
-          const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : cmd.milkReceptionValue
+          const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : classicCi
           const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
           
           tlsList.push({
             commandId: cmd.id,
             commandIdx: cmdIdx,
-            commandName: cmd.name,
+            commandName: cmd.name + " (Classique)",
             tlsKey: key,
             rawVolume: vol,
             osmosedVolume: osmVol,
@@ -931,13 +1108,16 @@ export const runMultiCommandSimulation = (
 
       if (cmdTransStart[tlsItem.commandId] === undefined) {
         cmdTransStart[tlsItem.commandId] = transferStart
+      } else {
+        cmdTransStart[tlsItem.commandId] = Math.min(cmdTransStart[tlsItem.commandId], transferStart)
       }
-      cmdTransEnd[tlsItem.commandId] = transferEnd
+      cmdTransEnd[tlsItem.commandId] = Math.max(cmdTransEnd[tlsItem.commandId] || 0, transferEnd)
+      
       cmdOsmoseStart[tlsItem.commandId] = transferEnd
       cmdOsmoseEnd[tlsItem.commandId] = transferEnd
 
       ganttTasks.push({
-        key: `${tlsItem.commandId}-direct-transfer`,
+        key: `${tlsItem.commandId}-skyr-direct-transfer`,
         label: `${tlsItem.commandName} : Transfert direct TLC ➔ Pasto`,
         startMinute: transferStart,
         durationMinutes: transferDuration,
@@ -952,11 +1132,13 @@ export const runMultiCommandSimulation = (
 
       if (cmdPastoStart[tlsItem.commandId] === undefined) {
         cmdPastoStart[tlsItem.commandId] = pastoStart
+      } else {
+        cmdPastoStart[tlsItem.commandId] = Math.min(cmdPastoStart[tlsItem.commandId], pastoStart)
       }
-      cmdPastoEnd[tlsItem.commandId] = pastoEnd
+      cmdPastoEnd[tlsItem.commandId] = Math.max(cmdPastoEnd[tlsItem.commandId] || 0, pastoEnd)
 
       ganttTasks.push({
-        key: `${tlsItem.commandId}-direct-pasto`,
+        key: `${tlsItem.commandId}-skyr-direct-pasto`,
         label: `${tlsItem.commandName} : Pasteurisation Directe (CF20)`,
         startMinute: pastoStart,
         durationMinutes: pastoDuration,
@@ -969,7 +1151,7 @@ export const runMultiCommandSimulation = (
       maturationEndAt["CF20"] = maturationEnd
 
       ganttTasks.push({
-        key: `${tlsItem.commandId}-maturation-cf20`,
+        key: `${tlsItem.commandId}-skyr-maturation-cf20`,
         label: `${tlsItem.commandName} : Maturation CF20`,
         startMinute: maturationStart,
         durationMinutes: 360,
@@ -978,11 +1160,13 @@ export const runMultiCommandSimulation = (
 
       if (cmdMinStart[tlsItem.commandId] === undefined) {
         cmdMinStart[tlsItem.commandId] = transferStart
+      } else {
+        cmdMinStart[tlsItem.commandId] = Math.min(cmdMinStart[tlsItem.commandId], transferStart)
       }
     } else {
       // Normal TLS-based processing
       const TLS_NAME = tlsItem.tlsKey.toUpperCase() as "TLS1" | "TLS2" | "TLS3"
-      const isEcreme = cmd.isSkyr && (cmd.skyrMilkType === "ecreme_savoie" || cmd.skyrMilkType === "ecreme_montagne")
+      const isEcreme = tlsItem.commandName.includes("Skyr") && (cmd.skyrMilkType === "ecreme_savoie" || cmd.skyrMilkType === "ecreme_montagne")
 
       let transferStart = tlsAvailableAt[TLS_NAME]
       let transferDuration = computeTransferTime(tlsItem.rawVolume)
@@ -1025,19 +1209,37 @@ export const runMultiCommandSimulation = (
 
       if (cmdTransStart[tlsItem.commandId] === undefined) {
         cmdTransStart[tlsItem.commandId] = isEcreme ? 0 : transferStart
+      } else {
+        cmdTransStart[tlsItem.commandId] = Math.min(cmdTransStart[tlsItem.commandId], isEcreme ? 0 : transferStart)
       }
-      cmdTransEnd[tlsItem.commandId] = transferEnd
+      cmdTransEnd[tlsItem.commandId] = Math.max(cmdTransEnd[tlsItem.commandId] || 0, transferEnd)
+
+      // Get protein level for this specific GANTT task to calculate osmosis time
+      let tVol = 0
+      let tProt = 0
+      const tKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+      tKeys.forEach(k => {
+        tlcBatches[k].forEach(b => {
+          if (b.milkType === tlsItem.milkType) {
+            tVol += b.volume
+            tProt += b.volume * b.protein
+          }
+        })
+      })
+      const tlsItemCi = tVol > 0 ? tProt / tVol : 33.0
 
       // 2. Schedule Osmosis
       const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
-      const osmoseDuration = computeOsmoseTime(tlsItem.rawVolume, cmd.milkReceptionValue, cmd.targetValue)
+      const osmoseDuration = computeOsmoseTime(tlsItem.rawVolume, tlsItemCi, cmd.targetValue)
       const osmoseEnd = osmoseStart + osmoseDuration
       timeOsmosisFree = osmoseEnd
 
       if (cmdOsmoseStart[tlsItem.commandId] === undefined) {
         cmdOsmoseStart[tlsItem.commandId] = osmoseStart
+      } else {
+        cmdOsmoseStart[tlsItem.commandId] = Math.min(cmdOsmoseStart[tlsItem.commandId], osmoseStart)
       }
-      cmdOsmoseEnd[tlsItem.commandId] = osmoseEnd
+      cmdOsmoseEnd[tlsItem.commandId] = Math.max(cmdOsmoseEnd[tlsItem.commandId] || 0, osmoseEnd)
 
       ganttTasks.push({
         key: `${tlsItem.commandId}-${TLS_NAME}-osmose`,
@@ -1075,10 +1277,6 @@ export const runMultiCommandSimulation = (
       const powderDuration = computePowderTime(tlsItem.osmosedVolume)
       const pastoDuration = computePastoTime(tlsItem.osmosedVolume)
 
-      // Calculate the minimum pastoStart required to satisfy sequential tank availability.
-      // Since powdering + pasto must chain without interruption, and powdering can only start
-      // after osmosis ends (osmoseEnd) and the powdering machine is free (timePowderFree),
-      // the pasteurization (pastoStart) must start at least powderDuration minutes after those events.
       let requiredPastoStart = Math.max(
         osmoseEnd + powderDuration, 
         Math.max(timePastoFree, timePowderFree + powderDuration)
@@ -1104,8 +1302,10 @@ export const runMultiCommandSimulation = (
 
       if (cmdPastoStart[tlsItem.commandId] === undefined) {
         cmdPastoStart[tlsItem.commandId] = powderStart
+      } else {
+        cmdPastoStart[tlsItem.commandId] = Math.min(cmdPastoStart[tlsItem.commandId], powderStart)
       }
-      cmdPastoEnd[tlsItem.commandId] = pastoEnd
+      cmdPastoEnd[tlsItem.commandId] = Math.max(cmdPastoEnd[tlsItem.commandId] || 0, pastoEnd)
 
       ganttTasks.push({
         key: `${tlsItem.commandId}-${TLS_NAME}-pasto`,
@@ -1120,7 +1320,6 @@ export const runMultiCommandSimulation = (
       cfTanksToFill.forEach((cfName) => {
         const fillVol = cfFillVolumes[cfName]
         const fillDuration = (fillVol / 5000) * 60
-        // Maturation of this tank starts as soon as it finishes filling
         const maturationStart = currentFillTime + fillDuration
         currentFillTime = maturationStart
 
@@ -1137,6 +1336,8 @@ export const runMultiCommandSimulation = (
 
       if (cmdMinStart[tlsItem.commandId] === undefined) {
         cmdMinStart[tlsItem.commandId] = transferStart
+      } else {
+        cmdMinStart[tlsItem.commandId] = Math.min(cmdMinStart[tlsItem.commandId], transferStart)
       }
     }
   })
@@ -1152,6 +1353,10 @@ export const runMultiCommandSimulation = (
     const maturationEnds = selectedCFs.map(cf => maturationEndAt[cf] || 0).filter(t => t > 0)
     const tEndMaturation = maturationEnds.length > 0 ? Math.min(...maturationEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
 
+    const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
+    const hasClassic = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
+    const isDirectSkyr = hasSkyr && cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto
+
     commandsResults[cmd.id] = {
       id: cmd.id,
       name: cmd.name,
@@ -1159,8 +1364,8 @@ export const runMultiCommandSimulation = (
       transferEnd: cmdTransEnd[cmd.id] || 0,
       osmoseStart: cmdOsmoseStart[cmd.id] || 0,
       osmoseEnd: cmdOsmoseEnd[cmd.id] || 0,
-      powderStart: cmd.isSkyr && cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto ? cmdOsmoseEnd[cmd.id] : cmdOsmoseEnd[cmd.id] || 0,
-      powderEnd: cmd.isSkyr && cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto ? cmdPastoStart[cmd.id] : cmdPastoStart[cmd.id] || 0,
+      powderStart: isDirectSkyr && !hasClassic ? (cmdOsmoseEnd[cmd.id] || 0) : (cmdOsmoseEnd[cmd.id] || 0),
+      powderEnd: isDirectSkyr && !hasClassic ? (cmdPastoStart[cmd.id] || 0) : (cmdPastoStart[cmd.id] || 0),
       pastoStart: cmdPastoStart[cmd.id] || 0,
       pastoEnd: cmdPastoEnd[cmd.id] || 0,
       maturationStart: cmdPastoEnd[cmd.id] || 0,
@@ -1177,7 +1382,6 @@ export const runMultiCommandSimulation = (
   commands.forEach((cmd, cmdIdx) => {
     const cmdRes = commandsResults[cmd.id]
     if (!cmdRes) return
-    const packagingStart = cmdRes.maturationEnd
 
     const refResults: { refId: string; name: string; start: number; end: number }[] = []
 
@@ -1198,12 +1402,23 @@ export const runMultiCommandSimulation = (
         potsGrun = customPots?.grunwald !== undefined ? customPots.grunwald : potsDefault * (10000 / 13500)
       }
 
+      // Compute maturation end specifically for this reference!
+      const isRefSkyr = ref.name.toLowerCase().includes("skyr")
+      let refMaturationEnd = 0
+      if (isRefSkyr) {
+        refMaturationEnd = maturationEndAt["CF20"] || 0
+      } else {
+        const classicCFs = (commandCFSelectedList[cmd.id] || []).filter(cf => cf !== "CF20")
+        const classicEnds = classicCFs.map(cf => maturationEndAt[cf] || 0).filter(t => t > 0)
+        refMaturationEnd = classicEnds.length > 0 ? Math.min(...classicEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
+      }
+
       let pkgStart = 0
       let pkgDuration = 0
       let emptyTime = 0
 
       if (dest === "grunwald") {
-        pkgStart = Math.max(packagingStart, timeGrunwald)
+        pkgStart = Math.max(refMaturationEnd, timeGrunwald)
         pkgDuration = (potsGrun / 10000) * 60
         emptyTime = pkgStart + pkgDuration
         timeGrunwald = emptyTime
@@ -1216,7 +1431,7 @@ export const runMultiCommandSimulation = (
           color: getCommandColor(cmdIdx, "packaging_grun"),
         })
       } else if (dest === "atia") {
-        pkgStart = Math.max(packagingStart, timeAtia)
+        pkgStart = Math.max(refMaturationEnd, timeAtia)
         pkgDuration = (potsAtia / 3500) * 60
         emptyTime = pkgStart + pkgDuration
         timeAtia = emptyTime
@@ -1229,8 +1444,8 @@ export const runMultiCommandSimulation = (
           color: getCommandColor(cmdIdx, "packaging_atia"),
         })
       } else { // both
-        const atiaStart = Math.max(packagingStart, timeAtia)
-        const grunStart = Math.max(packagingStart, timeGrunwald)
+        const atiaStart = Math.max(refMaturationEnd, timeAtia)
+        const grunStart = Math.max(refMaturationEnd, timeGrunwald)
         
         const atiaDuration = (potsAtia / 3500) * 60
         const grunDuration = (potsGrun / 10000) * 60

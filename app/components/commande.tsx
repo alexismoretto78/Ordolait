@@ -45,6 +45,9 @@ export default function Commande() {
 
   const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
 
+  const hasSkyr = activeCommand ? activeCommand.references.some(r => r.name.toLowerCase().includes("skyr")) : false
+  const hasClassic = activeCommand ? activeCommand.references.some(r => !r.name.toLowerCase().includes("skyr")) : false
+
   useEffect(() => {
     if (!productionStartTime) {
       const now = new Date()
@@ -459,80 +462,89 @@ export default function Commande() {
 
 
         {/* Command Milk Type Selector */}
-        <div className="form-group" style={{ marginTop: 4 }}>
-          <span className="form-label" style={{ marginBottom: 6 }}>
-            {activeCommand.isSkyr ? "Recette & Lait requis" : "Type de lait requis pour cette commande"}
-          </span>
-          {!activeCommand.isSkyr ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-              {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
-                const isSelected = (activeCommand.milkType || "bio") === type
-                const colors = {
-                  bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
-                  fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
-                  savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
-                  montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
-                }[type]
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 4 }}>
+          {hasClassic && (
+            <div className="form-group">
+              <span className="form-label" style={{ marginBottom: 6 }}>
+                🥛 Type de lait requis pour le(s) produit(s) classique(s) (ex: yaourts)
+              </span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+                  const isSelected = (activeCommand.milkType || "bio") === type
+                  const colors = {
+                    bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "🌱 Bio" },
+                    fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "🧪 FCV3" },
+                    savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "🏔️ Savoie" },
+                    montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "⛰️ Montagne" }
+                  }[type]
 
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
-                    style={{
-                      padding: "10px 4px",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "0.8rem",
-                      fontWeight: isSelected ? "800" : "600",
-                      border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
-                      background: isSelected ? colors.bg : "#ffffff",
-                      color: isSelected ? colors.color : "var(--text-muted)",
-                      cursor: "pointer",
-                      transition: "var(--transition)",
-                      textAlign: "center"
-                    }}
-                  >
-                    {colors.label}
-                  </button>
-                )
-              })}
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+                      style={{
+                        padding: "10px 4px",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.8rem",
+                        fontWeight: isSelected ? "800" : "600",
+                        border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+                        background: isSelected ? colors.bg : "#ffffff",
+                        color: isSelected ? colors.color : "var(--text-muted)",
+                        cursor: "pointer",
+                        transition: "var(--transition)",
+                        textAlign: "center"
+                      }}
+                    >
+                      {colors.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {([
-                { key: "fcv3", label: "🧪 Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
-                { key: "ecreme_savoie", label: "🏔️ Écrémé Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
-                { key: "ecreme_montagne", label: "⛰️ Écrémé Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
-              ] as const).map((opt) => {
-                const isSelected = activeCommand.skyrMilkType === opt.key
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
-                    style={{
-                      padding: "10px 4px",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "0.78rem",
-                      fontWeight: isSelected ? "800" : "600",
-                      border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
-                      background: isSelected ? opt.bg : "#ffffff",
-                      color: isSelected ? opt.color : "var(--text-muted)",
-                      cursor: "pointer",
-                      transition: "var(--transition)",
-                      textAlign: "center"
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
+          )}
+
+          {hasSkyr && (
+            <div className="form-group">
+              <span className="form-label" style={{ marginBottom: 6 }}>
+                🥣 Recette & Lait requis pour le Skyr
+              </span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {([
+                  { key: "fcv3", label: "🧪 Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
+                  { key: "ecreme_savoie", label: "🏔️ Écrémé Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
+                  { key: "ecreme_montagne", label: "⛰️ Écrémé Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
+                ] as const).map((opt) => {
+                  const isSelected = activeCommand.skyrMilkType === opt.key
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
+                      style={{
+                        padding: "10px 4px",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.78rem",
+                        fontWeight: isSelected ? "800" : "600",
+                        border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
+                        background: isSelected ? opt.bg : "#ffffff",
+                        color: isSelected ? opt.color : "var(--text-muted)",
+                        cursor: "pointer",
+                        transition: "var(--transition)",
+                        textAlign: "center"
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
 
         {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
-        {activeCommand.isSkyr && activeCommand.skyrMilkType === "fcv3" && (
+        {hasSkyr && activeCommand.skyrMilkType === "fcv3" && (
           <div style={{ 
             gridColumn: "span 2",
             display: "flex",

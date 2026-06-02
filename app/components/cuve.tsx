@@ -46,12 +46,13 @@ export default function Cuve() {
             {CF_TANKS.map((tank) => {
               const selected = activeCommand.selectedCFs.includes(tank.name)
               const isCF20 = tank.name === "CF20"
-              const isSkyrCommand = activeCommand.isSkyr
+              const hasSkyr = activeCommand.references.some(r => r.name.toLowerCase().includes("skyr"))
+              const hasClassic = activeCommand.references.some(r => !r.name.toLowerCase().includes("skyr"))
 
               const isDisabled = 
                 !activeCommand.pasteurized ||
-                (isSkyrCommand && !isCF20) ||
-                (!isSkyrCommand && isCF20) ||
+                (isCF20 && !hasSkyr) ||
+                (!isCF20 && !hasClassic) ||
                 (!selected && selectedCapacity >= volumeForCF)
 
               return (
