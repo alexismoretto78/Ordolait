@@ -318,70 +318,56 @@ export default function Commande() {
                           </button>
 
                           {openDropdownRefId === ref.id && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                top: "100%",
-                                left: "0",
-                                right: "0",
-                                backgroundColor: "white",
-                                border: "1px solid var(--border-color)",
-                                borderRadius: "var(--radius-md)",
-                                boxShadow: "var(--shadow-lg)",
-                                zIndex: 1000,
-                                maxHeight: "220px",
-                                overflowY: "auto",
-                                marginTop: "4px",
-                              }}
-                            >
-                              {(() => {
-                                const search = (localRefNames[ref.id] || "").toLowerCase().trim()
-                                const filtered = presets.filter(p => 
-                                  p.name.toLowerCase().includes(search)
-                                )
-
-                                if (filtered.length === 0) {
-                                  return (
-                                    <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
-                                      ✨ Référence personnalisée libre
-                                    </div>
-                                  )
-                                }
-
-                                return filtered.map((preset) => (
-                                  <div
-                                    key={preset.name}
-                                    onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
-                                    style={{
-                                      padding: "8px 14px",
-                                      fontSize: "0.85rem",
-                                      fontWeight: 500,
-                                      cursor: "pointer",
-                                      transition: "background-color 0.15s",
-                                      borderBottom: "1px solid #f1f5f9",
-                                      textAlign: "left",
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                      color: "var(--text-main)"
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = "var(--primary-light)"
-                                      e.currentTarget.style.color = "var(--primary)"
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = "transparent"
-                                      e.currentTarget.style.color = "var(--text-main)"
+                            <>
+                              <div 
+                                className="ref-dropdown-backdrop" 
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  setOpenDropdownRefId(null)
+                                }}
+                              />
+                              <div className="ref-dropdown">
+                                <div className="ref-dropdown-header">
+                                  <span>Choisir une référence</span>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      setOpenDropdownRefId(null)
                                     }}
                                   >
-                                    <span>{preset.name}</span>
-                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
-                                      {preset.grams}g
-                                    </span>
-                                  </div>
-                                ))
-                              })()}
-                            </div>
+                                    ✕
+                                  </button>
+                                </div>
+                                {(() => {
+                                  const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+                                  const filtered = presets.filter(p => 
+                                    p.name.toLowerCase().includes(search)
+                                  )
+
+                                  if (filtered.length === 0) {
+                                    return (
+                                      <div className="ref-dropdown-empty">
+                                        ✨ Référence personnalisée libre
+                                      </div>
+                                    )
+                                  }
+
+                                  return filtered.map((preset) => (
+                                    <div
+                                      key={preset.name}
+                                      onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+                                      className="ref-dropdown-item"
+                                    >
+                                      <span>{preset.name}</span>
+                                      <span className="ref-dropdown-badge">
+                                        {preset.grams}g
+                                      </span>
+                                    </div>
+                                  ))
+                                })()}
+                              </div>
+                            </>
                           )}
                         </div>
                       </td>
