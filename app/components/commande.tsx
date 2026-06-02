@@ -226,7 +226,7 @@ export default function Commande() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
               <thead>
                 <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)" }}>Nom Réf</th>
+                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", minWidth: "260px" }}>Nom Réf</th>
                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "140px" }}>Quantité (pots)</th>
                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "120px" }}>Format (g)</th>
                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "130px" }}>Masse Blanche</th>
@@ -244,7 +244,7 @@ export default function Commande() {
 
                   return (
                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "8px 12px" }}>
+                      <td style={{ padding: "8px 12px", minWidth: "260px" }}>
                         <div style={{ position: "relative", width: "100%" }}>
                           <input
                             type="text"
