@@ -2,7 +2,7 @@
 
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { startSimulation, updateSimulationProgress, completeSimulation } from "../lib/orderSlice"
+import { startSimulation, updateSimulationProgress, completeSimulation, toggleNeeds48hWash, toggleNeedsC3Wash } from "../lib/orderSlice"
 
 export default function Gantt() {
   const dispatch = useDispatch()
@@ -12,7 +12,9 @@ export default function Gantt() {
     simulationDone,
     simulationProgress,
     simulationStepText,
-    simulationResults
+    simulationResults,
+    needs48hWash,
+    needsC3Wash
   } = useSelector((state: RootState) => state.order)
 
   const totalReceivedVolume = commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
@@ -79,6 +81,25 @@ export default function Gantt() {
           </span>
         </div>
 
+        <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 8, padding: "12px", backgroundColor: "#f1f5f9", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>
+            <input 
+              type="checkbox" 
+              checked={needs48hWash}
+              onChange={() => dispatch(toggleNeeds48hWash())}
+            />
+            🧼 Simuler lavages 48h (C5, ATIA, Grunwald)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>
+            <input 
+              type="checkbox" 
+              checked={needsC3Wash}
+              onChange={() => dispatch(toggleNeedsC3Wash())}
+            />
+            🌙 Simuler lavage de nuit 24h (C3 - Poudrage/Pasto)
+          </label>
+        </div>
+
         {totalReceivedVolume <= 0 && (
           <p style={{ color: "var(--danger)", fontSize: "0.85rem", fontWeight: 600, fontStyle: "italic", marginTop: 4 }}>
             ⚠️ Configurez au moins une commande avec un nombre de pots supérieur à 0 pour lancer la simulation.
@@ -105,22 +126,22 @@ export default function Gantt() {
           <div style={{ marginBottom: 20 }}>
             <div className="gantt-scroll-container">
               <div className="gantt-scroll-content">
-                <div className="gantt-header-row">
-                  <div style={{ minWidth: 220 }}>Étape et Commande</div>
-                  <div style={{ flex: 1.5 }}>Durée</div>
-                  <div style={{ flex: 5 }}>Timeline</div>
+                <div className="gantt-header-row" style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: "0 0 220px", width: 220 }}>Étape et Commande</div>
+                  <div style={{ flex: "0 0 100px", width: 100 }}>Durée</div>
+                  <div style={{ flex: "1 1 auto" }}>Timeline</div>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {tasks.map((task) => (
                     <div key={task.key} className="gantt-row">
-                      <div className="gantt-row-label" style={{ minWidth: 220, fontSize: "0.85rem", fontWeight: 600 }}>
+                      <div className="gantt-row-label" style={{ flex: "0 0 220px", width: 220, fontSize: "0.85rem", fontWeight: 600 }}>
                         {task.label}
                       </div>
-                      <div className="gantt-row-duration" style={{ fontSize: "0.8rem" }}>
+                      <div className="gantt-row-duration" style={{ flex: "0 0 100px", width: 100, fontSize: "0.8rem" }}>
                         {task.key === "grouped-cf-wash" ? "30m / cuve" : formatTime(task.durationMinutes)}
                       </div>
-                      <div className="gantt-timeline-container">
+                      <div className="gantt-timeline-container" style={{ flex: "1 1 auto" }}>
                         <div className="gantt-bar-bg">
                           {task.segments ? (
                             task.segments.map((seg: any, sIdx) => {
@@ -197,7 +218,7 @@ export default function Gantt() {
                 <strong>Conditionnement</strong> : <strong>3 500 pots/h</strong> sur ATIA, <strong>10 000 pots/h</strong> sur Grunwald (ou <strong>13 500 pots/h</strong> combinés).
               </li>
               <li>
-                <strong>Overlap Cuves CF</strong> : La pasteurisation de la commande suivante commence dès qu&apos;une cuve se libère et offre une capacité suffisante.
+                <strong>Lavages Optimisés</strong> : Les durées et fréquences de lavage des équipements (TLS, TLC, Osmoseur, Pasto) sont intégrées dynamiquement pour éviter les blocages de flux.
               </li>
             </ul>
           </div>

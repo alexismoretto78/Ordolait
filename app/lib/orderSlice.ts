@@ -150,6 +150,10 @@ export type OrderState = {
   simulationProgress: number
   simulationStepText: string
 
+  // Washing Configuration
+  needs48hWash: boolean
+  needsC3Wash: boolean
+
   // Results
   simulatedTiming: TimingInfo
   simulatedMilkReceivedVolume: number
@@ -172,8 +176,8 @@ const initialCommand = (id: string, name: string): Command => {
   })
 
   const references: ProductReference[] = [
-    { id: "ref-1", name: "Nature 125g", potsQty: 80000, gramPerPot: 125 },
-    { id: "ref-2", name: "Fraise 120g", potsQty: 40000, gramPerPot: 120 },
+    { id: "ref-1", name: "Baiko Nature 125g", potsQty: 80000, gramPerPot: 125 },
+    { id: "ref-2", name: "MDD Fraise 120g", potsQty: 40000, gramPerPot: 120 },
   ]
 
   const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {
@@ -270,6 +274,10 @@ const initialState: OrderState = {
   simulationDone: false,
   simulationProgress: 0,
   simulationStepText: "",
+
+  needs48hWash: false,
+  needsC3Wash: false,
+
   simulatedTiming: { transferTime: 70.7, osmoseTime: 318.2, powderTime: 111, pastoTime: 177.6, startTime: 0, maturationTime: 360 },
   simulatedMilkReceivedVolume: 0,
   simulatedOsmosedVolume: 0,
@@ -738,14 +746,21 @@ type TLSToSchedule = {
 // Global simulation executor
 export const runMultiCommandSimulation = (
   commands: Command[],
-  tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[]; tankPermeat?: Batch[] }
+  tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[]; tankPermeat?: Batch[] },
+  config?: { needs48hWash: boolean; needsC3Wash: boolean }
 ): MultiCommandSimResults => {
   let timeOsmosisFree = 0
   let timePowderFree = 0
   let timePastoFree = 0
   let timeGrunwald = 0
   let timeAtia = 0
-  let timeWashFree = 0
+  let timeWashLine1Free = 0
+  let timeWashLine2Free = 0
+  let timeOsmoseWashFree = 0
+  let timeSoutirageWashFree = 0
+
+  let osmosisCount = 0
+  let pastoCount = 0
 
   // Clone TLC batches to consume them during simulation
   const tlcBatches = {
@@ -755,6 +770,8 @@ export const runMultiCommandSimulation = (
     tlc4: tlcBatchesInitial.tlc4.map(b => ({ ...b })),
     tankPermeat: tlcBatchesInitial.tankPermeat ? tlcBatchesInitial.tankPermeat.map(b => ({ ...b })) : [],
   }
+
+  let last48hWashEnd = 0
 
   const cfAvailableAt: { [tankName: string]: number } = {}
   CF_TANKS.forEach(t => { cfAvailableAt[t.name] = 0 })
@@ -1121,10 +1138,42 @@ export const runMultiCommandSimulation = (
       const tlsItemCi = tVol > 0 ? tProt / tVol : 33.0
 
       // 2. Schedule Osmosis
+      let osmoseWashInserted = false
+      if (timeOsmosisFree > 0 && Math.max(transferEnd, timeOsmosisFree) - timeOsmosisFree >= 60) {
+        const washStart = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+        ganttTasks.push({
+          key: `osm-wash-${tlsItem.commandId}-${TLS_NAME}-court`,
+          label: `Lavage Osmoseur (COURT)`,
+          startMinute: washStart,
+          durationMinutes: 90,
+          color: "#cbd5e1",
+        })
+        timeOsmoseWashFree = washStart + 90
+        timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+        osmoseWashInserted = true
+      } else if (osmosisCount >= 3) {
+        const washStart = Math.max(transferEnd, timeOsmosisFree, timeOsmoseWashFree)
+        ganttTasks.push({
+          key: `osm-wash-${tlsItem.commandId}-${TLS_NAME}-long`,
+          label: `Lavage Osmoseur (LONG)`,
+          startMinute: washStart,
+          durationMinutes: 150,
+          color: "#cbd5e1",
+        })
+        timeOsmoseWashFree = washStart + 150
+        timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+        osmoseWashInserted = true
+      }
+
+      if (osmoseWashInserted) {
+        osmosisCount = 0
+      }
+
       const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
       const osmoseDuration = computeOsmoseTime(tlsItem.rawVolume, tlsItemCi, cmd.targetValue)
       const osmoseEnd = osmoseStart + osmoseDuration
       timeOsmosisFree = osmoseEnd
+      osmosisCount++
 
       if (cmdOsmoseStart[tlsItem.commandId] === undefined) {
         cmdOsmoseStart[tlsItem.commandId] = osmoseStart
@@ -1184,13 +1233,42 @@ export const runMultiCommandSimulation = (
         cumDuration += fillDuration
       })
 
+      if (pastoCount >= 3) {
+        const washStart = Math.max(requiredPastoStart, timeWashLine2Free)
+        ganttTasks.push({
+          key: `pasto-wash-${tlsItem.commandId}-${TLS_NAME}`,
+          label: `Lavage C4 (Pasteurisateur COURT)`,
+          startMinute: washStart,
+          durationMinutes: 120,
+          color: "#cbd5e1",
+        })
+        requiredPastoStart = washStart + 120
+        timeWashLine2Free = requiredPastoStart
+        pastoCount = 0
+      }
+
       const pastoStart = requiredPastoStart
       const powderStart = pastoStart - powderDuration
       const pastoEnd = pastoStart + pastoDuration
 
       timePowderFree = pastoStart
       timePastoFree = pastoEnd
-      tlsAvailableAt[TLS_NAME] = pastoEnd
+      pastoCount++
+
+      // Lavage du TLS après la pasteurisation (le TLS est alors vide)
+      const tlsWashStart = Math.max(pastoEnd, timeWashLine1Free)
+      const tlsWashDuration = 40 // LONG
+      const tlsWashEnd = tlsWashStart + tlsWashDuration
+      tlsAvailableAt[TLS_NAME] = tlsWashEnd
+      timeWashLine1Free = tlsWashEnd
+
+      ganttTasks.push({
+        key: `tls-wash-${tlsItem.commandId}-${TLS_NAME}`,
+        label: `Lavage ${TLS_NAME}`,
+        startMinute: tlsWashStart,
+        durationMinutes: tlsWashDuration,
+        color: "#cbd5e1",
+      })
 
       if (cmdPastoStart[tlsItem.commandId] === undefined) {
         cmdPastoStart[tlsItem.commandId] = powderStart
@@ -1233,6 +1311,20 @@ export const runMultiCommandSimulation = (
       }
     }
   })
+
+  // Lavage TLC et TLP dès que les transferts sont terminés
+  const maxTransEnd = Math.max(0, ...Object.values(cmdTransEnd))
+  if (maxTransEnd > 0) {
+    const tlcWashStart = Math.max(maxTransEnd, timeWashLine1Free)
+    ganttTasks.push({
+      key: `wash-tlc`,
+      label: `Lavages TLC & TLP (Vides)`,
+      startMinute: tlcWashStart,
+      durationMinutes: 50, // LONG
+      color: "#94a3b8",
+    })
+    timeWashLine1Free = tlcWashStart + 50
+  }
 
   // Finalize command results timelines with intermediate states
   commands.forEach(cmd => {
@@ -1316,6 +1408,59 @@ export const runMultiCommandSimulation = (
         const classicEnds = classicCFs.map(cf => maturationEndAt[cf] || 0).filter(t => t > 0)
         refMaturationEnd = classicEnds.length > 0 ? Math.min(...classicEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
       }
+
+      // --- 48h Wash Logic Check ---
+      const expectedAtiaDuration = dest === "atia" || dest === "both" ? (potsAtia / 3500) * 60 : 0
+      const expectedGrunDuration = dest === "grunwald" || dest === "both" ? (potsGrun / 10000) * 60 : 0
+      
+      const expectedAtiaStart = Math.max(refMaturationEnd, timeAtia)
+      const expectedGrunStart = Math.max(refMaturationEnd, timeGrunwald)
+      
+      const expectedPkgStart = dest === "both" ? Math.min(expectedAtiaStart, expectedGrunStart) : (dest === "atia" ? expectedAtiaStart : expectedGrunStart)
+      const expectedPkgEnd = Math.max(
+         dest === "atia" || dest === "both" ? expectedAtiaStart + expectedAtiaDuration : 0,
+         dest === "grunwald" || dest === "both" ? expectedGrunStart + expectedGrunDuration : 0
+      )
+
+      const timeSinceLastWash = expectedPkgEnd - last48hWashEnd
+      const maxLimit = 52 * 60 // 3120
+      const minLimit = 44 * 60 // 2640
+
+      if (timeSinceLastWash > maxLimit || (expectedPkgStart - last48hWashEnd >= minLimit)) {
+         let c5Start = Math.max(timeAtia, timeGrunwald, timeSoutirageWashFree)
+         ganttTasks.push({
+           key: `wash-c5-dyn-${cmd.id}-${ref.id}`,
+           label: `Lavage 48H: C5 (Pré-Cond.)`,
+           startMinute: c5Start,
+           durationMinutes: 90,
+           color: "#94a3b8",
+         })
+         let c5End = c5Start + 90
+         timeSoutirageWashFree = c5End
+         
+         let atiaStart = c5End
+         ganttTasks.push({
+           key: `wash-atia-dyn-${cmd.id}-${ref.id}`,
+           label: `Lavage 48H: ATIA`,
+           startMinute: atiaStart,
+           durationMinutes: 50,
+           color: "#94a3b8",
+         })
+         
+         let grunStart = c5End
+         ganttTasks.push({
+           key: `wash-grun-dyn-${cmd.id}-${ref.id}`,
+           label: `Lavage 48H: Grunwald`,
+           startMinute: grunStart,
+           durationMinutes: 110,
+           color: "#94a3b8",
+         })
+         
+         timeAtia = atiaStart + 50
+         timeGrunwald = grunStart + 110
+         last48hWashEnd = Math.max(timeAtia, timeGrunwald)
+      }
+      // ----------------------------
 
       let pkgStart = 0
       let pkgDuration = 0
@@ -1444,28 +1589,131 @@ export const runMultiCommandSimulation = (
 
     cfsToWash.forEach(cfName => {
       const emptyTime = cfMaxEnd[cfName] || maturationEndAt[cfName] || cmdRes.maturationEnd
-      const washStart = Math.max(emptyTime, timeWashFree)
-      const washEnd = washStart + 30
+      
+      let washStart = 0
+      if (cfName === "CF20") {
+        washStart = Math.max(emptyTime, timeWashLine1Free)
+        const washEnd = washStart + 20 // COURT
+        ganttTasks.push({
+          key: `${cmd.id}-${cfName}-wash`,
+          label: `${cmd.name} : Lavage ${cfName}`,
+          startMinute: washStart,
+          durationMinutes: 20,
+          color: "#cbd5e1",
+        })
+        cfAvailableAt[cfName] = washEnd
+        timeWashLine1Free = washEnd
 
-      ganttTasks.push({
-        key: `${cmd.id}-${cfName}-wash`,
-        label: `${cmd.name} : Lavage ${cfName}`,
-        startMinute: washStart,
-        durationMinutes: 30,
-        color: "#cbd5e1",
-      })
-      cfAvailableAt[cfName] = washEnd
-      timeWashFree = washEnd
+        // Lavage de la ligne de soutirage CF20 dès que possible
+        const soutirageCF20Start = Math.max(timeWashLine1Free, timeSoutirageWashFree)
+        ganttTasks.push({
+          key: `wash-soutirage-cf20-${cmd.id}`,
+          label: `Lavage Ligne Soutirage CF20`,
+          startMinute: soutirageCF20Start,
+          durationMinutes: 90,
+          color: "#94a3b8",
+        })
+        const soutirageEnd = soutirageCF20Start + 90
+        timeSoutirageWashFree = soutirageEnd
+        timeWashLine1Free = soutirageEnd
+      } else {
+        washStart = Math.max(emptyTime, timeWashLine2Free)
+        const washEnd = washStart + 20 // COURT
+        ganttTasks.push({
+          key: `${cmd.id}-${cfName}-wash`,
+          label: `${cmd.name} : Lavage ${cfName}`,
+          startMinute: washStart,
+          durationMinutes: 20,
+          color: "#cbd5e1",
+        })
+        cfAvailableAt[cfName] = washEnd
+        timeWashLine2Free = washEnd
+      }
     })
   })
 
-  const totalDurationMinutes = Math.max(
+  let totalDurationMinutes = Math.max(
     timeGrunwald,
     timeAtia,
     timePastoFree,
     ...Object.values(cfAvailableAt),
     ...Object.values(tlsAvailableAt)
   )
+
+  // 8. Lavages de fin de cycle (C5, ATIA, Grunwald, C3, C2, TLC, C4)
+  let endWashTimeLine1 = totalDurationMinutes
+  let endWashTimeLine2 = totalDurationMinutes
+
+  if (config?.needs48hWash) {
+    const c5Start = Math.max(endWashTimeLine2, timeSoutirageWashFree)
+    ganttTasks.push({
+      key: `wash-c5`,
+      label: `Lavage C5 (Ligne de soutirage)`,
+      startMinute: c5Start,
+      durationMinutes: 90, // LONG
+      color: "#94a3b8",
+    })
+    const c5End = c5Start + 90
+    timeSoutirageWashFree = c5End
+    endWashTimeLine2 = c5End
+
+    const aFaitCF20 = commands.some(c => commandCFSelectedList[c.id]?.includes("CF20"))
+    // Le lavage de la ligne de soutirage CF20 a été déplacé juste après le lavage de la CF20
+
+    const atiaStart = endWashTimeLine1
+    ganttTasks.push({
+      key: `wash-atia`,
+      label: `Lavage ATIA`,
+      startMinute: atiaStart,
+      durationMinutes: 50,
+      color: "#94a3b8",
+    })
+    endWashTimeLine1 += 50
+
+    const grunStart = endWashTimeLine2
+    ganttTasks.push({
+      key: `wash-grun`,
+      label: `Lavage Grunwald`,
+      startMinute: grunStart,
+      durationMinutes: 110,
+      color: "#94a3b8",
+    })
+    endWashTimeLine2 += 110
+  }
+
+  if (config?.needsC3Wash) {
+    let c3WashStart = Math.max(1320, endWashTimeLine1) // 1320 = 22h00
+    ganttTasks.push({
+      key: `wash-c3`,
+      label: `Lavage C3 (Poudrage/Osmose/Pasto)`,
+      startMinute: c3WashStart,
+      durationMinutes: 60, // LONG
+      color: "#94a3b8",
+    })
+    endWashTimeLine1 = c3WashStart + 60
+  }
+
+  // Lavage C2 en fin de journée
+  ganttTasks.push({
+    key: `wash-c2`,
+    label: `Lavage C2 (Circuit Réception)`,
+    startMinute: endWashTimeLine1,
+    durationMinutes: 70, // LONG 1h10
+    color: "#94a3b8",
+  })
+  endWashTimeLine1 += 70
+  
+  // Lavage C4 en fin de journée
+  ganttTasks.push({
+    key: `wash-c4`,
+    label: `Lavage C4 (Pasto & Envoi)`,
+    startMinute: endWashTimeLine2,
+    durationMinutes: 120, // LONG
+    color: "#94a3b8",
+  })
+  endWashTimeLine2 += 120
+
+  totalDurationMinutes = Math.max(endWashTimeLine1, endWashTimeLine2)
 
   // Post-process ganttTasks into exactly 6 global grouped rows (Transfer, Osmosis, Pasteurization, Maturation, Packaging, Washing)
   const finalGanttTasks: GanttTask[] = []
@@ -1581,16 +1829,19 @@ export const runMultiCommandSimulation = (
     "hsl(220, 90%, 55%)"
   )
 
-  // 7. Lavage des Cuves
+  // 7. Lavages (CF, C5, ATIA, C3, C2, Osm, Pasto...)
   createGroupedRow(
-    "grouped-cf-wash",
-    "7. Lavage des Cuves CF",
-    t => t.key.endsWith("-wash"),
+    "grouped-wash",
+    "7. Lavages (CF, C5, ATIA, C3, C2, Osm, Pasto...)",
+    t => t.key.includes("-wash") || t.key.includes("wash-"),
     t => {
-      const match = t.key.match(/CF\d+/);
-      return match ? match[0] : "Lavage";
+      if (t.key.includes("-wash")) {
+        const match = t.key.match(/CF\d+|TLS[1-3]|osm|pasto/);
+        return match ? match[0] : "Lavage";
+      }
+      return t.label.replace("Lavage ", "");
     },
-    "#cbd5e1"
+    "#94a3b8"
   )
 
   return {
@@ -2094,7 +2345,10 @@ const orderSlice = createSlice({
       state.isSimulating = false
       state.simulationDone = true
 
-      const results = runMultiCommandSimulation(state.commands, state.tlcBatches)
+      const results = runMultiCommandSimulation(state.commands, state.tlcBatches, {
+        needs48hWash: state.needs48hWash,
+        needsC3Wash: state.needsC3Wash
+      })
       state.simulationResults = results
 
       const active = state.commands.find(c => c.id === state.activeCommandId)
@@ -2114,6 +2368,14 @@ const orderSlice = createSlice({
     },
     resetOrder() {
       return initialState
+    },
+    toggleNeeds48hWash(state) {
+      state.needs48hWash = !state.needs48hWash
+      state.simulationDone = false
+    },
+    toggleNeedsC3Wash(state) {
+      state.needsC3Wash = !state.needsC3Wash
+      state.simulationDone = false
     },
   },
 })
@@ -2146,6 +2408,8 @@ export const {
   updateSimulationProgress,
   completeSimulation,
   resetOrder,
+  toggleNeeds48hWash,
+  toggleNeedsC3Wash,
 } = orderSlice.actions
 
 export { CF_TANKS, TLS_TANKS }
