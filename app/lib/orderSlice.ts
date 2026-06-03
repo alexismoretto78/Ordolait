@@ -780,6 +780,7 @@ export const runMultiCommandSimulation = (
   CF_TANKS.forEach(t => { maturationEndAt[t.name] = 0 })
 
   const tlsAvailableAt = { TLS1: 0, TLS2: 0, TLS3: 0 }
+  const commandTankMaturationEnd: { [commandId: string]: { [cfName: string]: number } } = {}
 
   const commandsResults: { [id: string]: CommandSimResult } = {}
   const ganttTasks: GanttTask[] = []
@@ -1004,8 +1005,12 @@ export const runMultiCommandSimulation = (
   const cmdPastoStart: { [id: string]: number } = {}
   const cmdPastoEnd: { [id: string]: number } = {}
 
-  // Process all TLSs chronologically
-  tlsList.forEach((tlsItem) => {
+  // Process all commands sequentially to ensure cfAvailableAt is correctly propagated
+  commands.forEach((cmd, cmdIdx) => {
+    const cmdTlsItems = tlsList.filter(t => t.commandId === cmd.id)
+    
+    // 1. Process TLSs chronologically for this command
+    cmdTlsItems.forEach((tlsItem) => {
     const isDirect = tlsItem.tlsKey === "direct"
     const cmd = commands.find(c => c.id === tlsItem.commandId)!
 
@@ -1058,6 +1063,10 @@ export const runMultiCommandSimulation = (
       const maturationStart = pastoEnd
       const maturationEnd = pastoEnd + 360
       maturationEndAt["CF20"] = maturationEnd
+      if (!commandTankMaturationEnd[tlsItem.commandId]) {
+        commandTankMaturationEnd[tlsItem.commandId] = {}
+      }
+      commandTankMaturationEnd[tlsItem.commandId]["CF20"] = maturationEnd
 
       ganttTasks.push({
         key: `${tlsItem.commandId}-skyr-maturation-cf20`,
@@ -1302,6 +1311,10 @@ export const runMultiCommandSimulation = (
         })
 
         maturationEndAt[cfName] = maturationStart + 360
+        if (!commandTankMaturationEnd[tlsItem.commandId]) {
+          commandTankMaturationEnd[tlsItem.commandId] = {}
+        }
+        commandTankMaturationEnd[tlsItem.commandId][cfName] = maturationStart + 360
       })
 
       if (cmdMinStart[tlsItem.commandId] === undefined) {
@@ -1310,36 +1323,21 @@ export const runMultiCommandSimulation = (
         cmdMinStart[tlsItem.commandId] = Math.min(cmdMinStart[tlsItem.commandId], transferStart)
       }
     }
-  })
+    }) // End of cmdTlsItems.forEach
 
-  // Lavage TLC et TLP dès que les transferts sont terminés
-  const maxTransEnd = Math.max(0, ...Object.values(cmdTransEnd))
-  if (maxTransEnd > 0) {
-    const tlcWashStart = Math.max(maxTransEnd, timeWashLine1Free)
-    ganttTasks.push({
-      key: `wash-tlc`,
-      label: `Lavages TLC & TLP (Vides)`,
-      startMinute: tlcWashStart,
-      durationMinutes: 50, // LONG
-      color: "#94a3b8",
-    })
-    timeWashLine1Free = tlcWashStart + 50
-  }
-
-  // Finalize command results timelines with intermediate states
-  commands.forEach(cmd => {
-    if (cmd.references.length === 0) return
+    // 2. Finalize command results timelines with intermediate states for this command
+    if (cmd.references.length === 0) return // Skip if no references
 
     const tStart = cmdMinStart[cmd.id] || 0
 
     // Earliest maturation end of the selected CF tanks determines when packaging starts!
     const selectedCFs = commandCFSelectedList[cmd.id] || []
 
-    const sortedCFs = [...selectedCFs].sort((a, b) => (maturationEndAt[a] || 0) - (maturationEndAt[b] || 0))
+    const sortedCFs = [...selectedCFs].sort((a, b) => (commandTankMaturationEnd[cmd.id]?.[a] || 0) - (commandTankMaturationEnd[cmd.id]?.[b] || 0))
     const firstTankName = sortedCFs.length > 0 ? sortedCFs[0] : undefined
-    const firstTankMaturationEnd = firstTankName ? maturationEndAt[firstTankName] : undefined
+    const firstTankMaturationEnd = firstTankName ? commandTankMaturationEnd[cmd.id]?.[firstTankName] : undefined
 
-    const maturationEnds = selectedCFs.map(cf => maturationEndAt[cf] || 0).filter(t => t > 0)
+    const maturationEnds = selectedCFs.map(cf => commandTankMaturationEnd[cmd.id]?.[cf] || 0).filter(t => t > 0)
     const tEndMaturation = maturationEnds.length > 0 ? Math.min(...maturationEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
 
     const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
@@ -1367,10 +1365,8 @@ export const runMultiCommandSimulation = (
       firstTankName,
       firstTankMaturationEnd,
     }
-  })
 
-  // 5. Schedule Reference Packaging sequentially per command after maturation is complete
-  commands.forEach((cmd, cmdIdx) => {
+    // 3. Schedule Reference Packaging sequentially for this command after maturation is complete
     const cmdRes = commandsResults[cmd.id]
     if (!cmdRes) return
 
@@ -1378,7 +1374,7 @@ export const runMultiCommandSimulation = (
     const cfMaxEnd: Record<string, number> = {}
 
     const classicCFs = (commandCFSelectedList[cmd.id] || []).filter(cf => cf !== "CF20")
-    classicCFs.sort((a, b) => (maturationEndAt[a] || 0) - (maturationEndAt[b] || 0))
+    classicCFs.sort((a, b) => (commandTankMaturationEnd[cmd.id]?.[a] || 0) - (commandTankMaturationEnd[cmd.id]?.[b] || 0))
     const classicCFVolumes = classicCFs.map(cf => ({ cf, vol: cfTanksFilledForCommand[cmd.id]?.[cf] || 0 }))
 
     cmd.references.forEach((ref) => {
@@ -1402,10 +1398,10 @@ export const runMultiCommandSimulation = (
       const isRefSkyr = ref.name.toLowerCase().includes("skyr")
       let refMaturationEnd = 0
       if (isRefSkyr) {
-        refMaturationEnd = maturationEndAt["CF20"] || 0
+        refMaturationEnd = commandTankMaturationEnd[cmd.id]?.["CF20"] || 0
       } else {
         const classicCFs = (commandCFSelectedList[cmd.id] || []).filter(cf => cf !== "CF20")
-        const classicEnds = classicCFs.map(cf => maturationEndAt[cf] || 0).filter(t => t > 0)
+        const classicEnds = classicCFs.map(cf => commandTankMaturationEnd[cmd.id]?.[cf] || 0).filter(t => t > 0)
         refMaturationEnd = classicEnds.length > 0 ? Math.min(...classicEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
       }
 
@@ -1462,72 +1458,68 @@ export const runMultiCommandSimulation = (
       }
       // ----------------------------
 
-      let pkgStart = 0
-      let pkgDuration = 0
-      let emptyTime = 0
-
-      if (dest === "grunwald") {
-        pkgStart = Math.max(refMaturationEnd, timeGrunwald)
-        pkgDuration = (potsGrun / 10000) * 60
-        emptyTime = pkgStart + pkgDuration
-        timeGrunwald = emptyTime
-
-        ganttTasks.push({
-          key: `${cmd.id}-${ref.id}-pkg-grun`,
-          label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
-          startMinute: pkgStart,
-          durationMinutes: pkgDuration,
-          color: getCommandColor(cmdIdx, "packaging_grun"),
-        })
-      } else if (dest === "atia") {
-        pkgStart = Math.max(refMaturationEnd, timeAtia)
-        pkgDuration = (potsAtia / 3500) * 60
-        emptyTime = pkgStart + pkgDuration
-        timeAtia = emptyTime
-
-        ganttTasks.push({
-          key: `${cmd.id}-${ref.id}-pkg-atia`,
-          label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
-          startMinute: pkgStart,
-          durationMinutes: pkgDuration,
-          color: getCommandColor(cmdIdx, "packaging_atia"),
-        })
-      } else { // both
-        const atiaStart = Math.max(refMaturationEnd, timeAtia)
-        const grunStart = Math.max(refMaturationEnd, timeGrunwald)
-
-        const atiaDuration = (potsAtia / 3500) * 60
-        const grunDuration = (potsGrun / 10000) * 60
-
-        const atiaEnd = atiaStart + atiaDuration
-        const grunEnd = grunStart + grunDuration
-
-        timeAtia = atiaEnd
-        timeGrunwald = grunEnd
-        pkgStart = Math.min(atiaStart, grunStart)
-        emptyTime = Math.max(atiaEnd, grunEnd)
-
-        ganttTasks.push({
-          key: `${cmd.id}-${ref.id}-pkg-both`,
-          label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
-          startMinute: pkgStart,
-          durationMinutes: emptyTime - pkgStart,
-          color: getCommandColor(cmdIdx, "packaging_grun"),
-        })
-      }
-
-      refResults.push({
-        refId: ref.id,
-        name: ref.name,
-        start: pkgStart,
-        end: emptyTime
-      })
-
-      if (cmdMaxEnd[cmd.id] === undefined || emptyTime > cmdMaxEnd[cmd.id]) {
-        cmdMaxEnd[cmd.id] = emptyTime
-      }
+      let refStart = -1
+      let refEnd = -1
 
       if (isRefSkyr) {
+        const tankReady = commandTankMaturationEnd[cmd.id]?.["CF20"] || 0
+        let pkgStart = 0
+        let emptyTime = 0
+
+        if (dest === "grunwald") {
+          pkgStart = Math.max(tankReady, timeGrunwald)
+          const pkgDuration = (potsGrun / 10000) * 60
+          emptyTime = pkgStart + pkgDuration
+          timeGrunwald = emptyTime
+
+          ganttTasks.push({
+            key: `${cmd.id}-${ref.id}-pkg-grun`,
+            label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
+            startMinute: pkgStart,
+            durationMinutes: pkgDuration,
+            color: getCommandColor(cmdIdx, "packaging_grun"),
+          })
+        } else if (dest === "atia") {
+          pkgStart = Math.max(tankReady, timeAtia)
+          const pkgDuration = (potsAtia / 3500) * 60
+          emptyTime = pkgStart + pkgDuration
+          timeAtia = emptyTime
+
+          ganttTasks.push({
+            key: `${cmd.id}-${ref.id}-pkg-atia`,
+            label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
+            startMinute: pkgStart,
+            durationMinutes: pkgDuration,
+            color: getCommandColor(cmdIdx, "packaging_atia"),
+          })
+        } else { // both
+          const atiaStart = Math.max(tankReady, timeAtia)
+          const grunStart = Math.max(tankReady, timeGrunwald)
+
+          const atiaDuration = (potsAtia / 3500) * 60
+          const grunDuration = (potsGrun / 10000) * 60
+
+          const atiaEnd = atiaStart + atiaDuration
+          const grunEnd = grunStart + grunDuration
+
+          pkgStart = Math.min(atiaStart, grunStart)
+          emptyTime = Math.max(atiaEnd, grunEnd)
+          
+          timeAtia = atiaEnd
+          timeGrunwald = grunEnd
+
+          ganttTasks.push({
+            key: `${cmd.id}-${ref.id}-pkg-both`,
+            label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
+            startMinute: pkgStart,
+            durationMinutes: emptyTime - pkgStart,
+            color: getCommandColor(cmdIdx, "packaging_grun"),
+          })
+        }
+
+        refStart = pkgStart
+        refEnd = emptyTime
+
         cfMaxEnd["CF20"] = Math.max(cfMaxEnd["CF20"] || 0, emptyTime)
         ganttTasks.push({
           key: `${cmd.id}-${ref.id}-CF20-empty`,
@@ -1538,9 +1530,7 @@ export const runMultiCommandSimulation = (
         })
       } else {
         let refVol = (potsAtia + potsGrun) * ref.gramPerPot / 1000
-        let timeStart = pkgStart
-        const duration = emptyTime - pkgStart
-        const flowRate = duration > 0 ? refVol / duration : 0
+        const totalPots = potsAtia + potsGrun
 
         for (let i = 0; i < classicCFVolumes.length; i++) {
           if (classicCFVolumes[i].vol <= 0) continue
@@ -1550,20 +1540,90 @@ export const runMultiCommandSimulation = (
           classicCFVolumes[i].vol -= take
           refVol -= take
 
-          const timeTaken = flowRate > 0 ? take / flowRate : 0
-          const timeEnd = timeStart + timeTaken
-          cfMaxEnd[classicCFVolumes[i].cf] = timeEnd
+          const tankReady = commandTankMaturationEnd[cmd.id]?.[classicCFVolumes[i].cf] || 0
+          
+          const takeRatio = totalPots > 0 ? take / (totalPots * ref.gramPerPot / 1000) : 0
+          const takePotsAtia = potsAtia * takeRatio
+          const takePotsGrun = potsGrun * takeRatio
+
+          let chunkStart = 0
+          let chunkEnd = 0
+
+          if (dest === "grunwald") {
+            chunkStart = Math.max(tankReady, timeGrunwald)
+            const duration = (takePotsGrun / 10000) * 60
+            chunkEnd = chunkStart + duration
+            timeGrunwald = chunkEnd
+
+            ganttTasks.push({
+              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-grun`,
+              label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
+              startMinute: chunkStart,
+              durationMinutes: duration,
+              color: getCommandColor(cmdIdx, "packaging_grun"),
+            })
+          } else if (dest === "atia") {
+            chunkStart = Math.max(tankReady, timeAtia)
+            const duration = (takePotsAtia / 3500) * 60
+            chunkEnd = chunkStart + duration
+            timeAtia = chunkEnd
+
+            ganttTasks.push({
+              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-atia`,
+              label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
+              startMinute: chunkStart,
+              durationMinutes: duration,
+              color: getCommandColor(cmdIdx, "packaging_atia"),
+            })
+          } else {
+            const startAtia = Math.max(tankReady, timeAtia)
+            const startGrun = Math.max(tankReady, timeGrunwald)
+            
+            const atiaDuration = (takePotsAtia / 3500) * 60
+            const grunDuration = (takePotsGrun / 10000) * 60
+            
+            chunkStart = Math.min(startAtia, startGrun)
+            
+            const endAtia = startAtia + atiaDuration
+            const endGrun = startGrun + grunDuration
+            chunkEnd = Math.max(endAtia, endGrun)
+            
+            timeAtia = endAtia
+            timeGrunwald = endGrun
+            
+            ganttTasks.push({
+              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-both`,
+              label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
+              startMinute: chunkStart,
+              durationMinutes: chunkEnd - chunkStart,
+              color: getCommandColor(cmdIdx, "packaging_grun"),
+            })
+          }
+
+          cfMaxEnd[classicCFVolumes[i].cf] = chunkEnd
           
           ganttTasks.push({
             key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-empty`,
             label: `${cmd.name} : Vidage ${classicCFVolumes[i].cf}`,
-            startMinute: timeStart,
-            durationMinutes: timeTaken,
+            startMinute: chunkStart,
+            durationMinutes: chunkEnd - chunkStart,
             color: "hsl(180, 50%, 45%)",
           })
-          
-          timeStart = timeEnd
+
+          if (refStart === -1) refStart = chunkStart
+          refEnd = chunkEnd
         }
+      }
+
+      refResults.push({
+        refId: ref.id,
+        name: ref.name,
+        start: refStart,
+        end: refEnd
+      })
+
+      if (cmdMaxEnd[cmd.id] === undefined || refEnd > cmdMaxEnd[cmd.id]) {
+        cmdMaxEnd[cmd.id] = refEnd
       }
     })
 
@@ -1575,20 +1635,20 @@ export const runMultiCommandSimulation = (
     cmdRes.totalDuration = cmdPkgEnd
 
     if (cmdRes.firstTankName) {
-      cmdRes.firstTankEmptyEnd = cfMaxEnd[cmdRes.firstTankName] || maturationEndAt[cmdRes.firstTankName] || cmdRes.maturationEnd
+      cmdRes.firstTankEmptyEnd = cfMaxEnd[cmdRes.firstTankName] || commandTankMaturationEnd[cmd.id]?.[cmdRes.firstTankName] || cmdRes.maturationEnd
     }
 
-    const selectedCFs = commandCFSelectedList[cmd.id]
+    const washSelectedCFs = commandCFSelectedList[cmd.id]
     
     // Sort CFs by empty time to wash them in order
-    const cfsToWash = [...selectedCFs].sort((a, b) => {
-      const emptyA = cfMaxEnd[a] || maturationEndAt[a] || cmdRes.maturationEnd
-      const emptyB = cfMaxEnd[b] || maturationEndAt[b] || cmdRes.maturationEnd
+    const cfsToWash = [...washSelectedCFs].sort((a, b) => {
+      const emptyA = cfMaxEnd[a] || commandTankMaturationEnd[cmd.id]?.[a] || cmdRes.maturationEnd
+      const emptyB = cfMaxEnd[b] || commandTankMaturationEnd[cmd.id]?.[b] || cmdRes.maturationEnd
       return emptyA - emptyB
     })
 
     cfsToWash.forEach(cfName => {
-      const emptyTime = cfMaxEnd[cfName] || maturationEndAt[cfName] || cmdRes.maturationEnd
+      const emptyTime = cfMaxEnd[cfName] || commandTankMaturationEnd[cmd.id]?.[cfName] || cmdRes.maturationEnd
       
       let washStart = 0
       if (cfName === "CF20") {
@@ -1630,7 +1690,21 @@ export const runMultiCommandSimulation = (
         timeWashLine2Free = washEnd
       }
     })
-  })
+  }) // End of main commands.forEach loop
+
+  // Lavage TLC et TLP dès que les transferts sont terminés
+  const maxTransEnd = Math.max(0, ...Object.values(cmdTransEnd))
+  if (maxTransEnd > 0) {
+    const tlcWashStart = Math.max(maxTransEnd, timeWashLine1Free)
+    ganttTasks.push({
+      key: `wash-tlc`,
+      label: `Lavages TLC & TLP (Vides)`,
+      startMinute: tlcWashStart,
+      durationMinutes: 50, // LONG
+      color: "#94a3b8",
+    })
+    timeWashLine1Free = tlcWashStart + 50
+  }
 
   let totalDurationMinutes = Math.max(
     timeGrunwald,
@@ -1815,18 +1889,28 @@ export const runMultiCommandSimulation = (
     "hsl(180, 50%, 45%)"
   )
 
-  // 6. Conditionnement
+  // 6. Conditionnement ATIA
   createGroupedRow(
-    "grouped-packaging",
-    "6. Conditionnement (Lignes ATIA & GRUNWALD)",
-    t => t.key.includes("-pkg-"),
+    "grouped-packaging-atia",
+    "6. Conditionnement (Ligne ATIA)",
+    t => t.key.includes("-pkg-atia") || (t.key.includes("-pkg-both") && t.key.endsWith("-atia")), // using -pkg-atia only actually
     t => {
       const cmdMatch = t.label.match(/(Commande \d+|Cmd \d+)/i) || t.label.match(/(C\d+)/);
-      const cmdText = cmdMatch ? cmdMatch[0] : "Cmd";
-      const machine = t.key.endsWith("-grun") ? "GRUN" : t.key.endsWith("-atia") ? "ATIA" : "ATIA+GRUN";
-      return `${cmdText} (${machine})`;
+      return cmdMatch ? cmdMatch[0] : "Cmd";
     },
-    "hsl(220, 90%, 55%)"
+    "hsl(220, 90%, 65%)"
+  )
+
+  // 7. Conditionnement GRUNWALD
+  createGroupedRow(
+    "grouped-packaging-grun",
+    "7. Conditionnement (Ligne GRUNWALD)",
+    t => t.key.includes("-pkg-grun") || (t.key.includes("-pkg-both") && t.key.endsWith("-grun")), // using -pkg-grun only actually
+    t => {
+      const cmdMatch = t.label.match(/(Commande \d+|Cmd \d+)/i) || t.label.match(/(C\d+)/);
+      return cmdMatch ? cmdMatch[0] : "Cmd";
+    },
+    "hsl(200, 90%, 55%)"
   )
 
   // 7. Lavages (CF, C5, ATIA, C3, C2, Osm, Pasto...)

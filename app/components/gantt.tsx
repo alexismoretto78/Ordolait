@@ -158,7 +158,7 @@ export default function Gantt() {
                                     borderLeft: "1px solid rgba(0, 0, 0, 0.15)",
                                     borderRight: "1px solid rgba(0, 0, 0, 0.15)",
                                   }}
-                                  title={`${seg.label} (Début: +${seg.startMinute.toFixed(0)}m)`}
+                                  title={`${seg.label} (Début: +${formatTime(seg.startMinute)})`}
                                 >
                                   {displayText}
                                 </div>
@@ -174,7 +174,7 @@ export default function Gantt() {
                                 fontSize: "0.7rem",
                               }}
                             >
-                              +{task.startMinute.toFixed(0)}m
+                              +{formatTime(task.startMinute)}
                             </div>
                           )}
                         </div>
