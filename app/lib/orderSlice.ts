@@ -233,7 +233,7 @@ const initialBatches = () => ({
     { id: "batch-4", lotNumber: "2605291500", volume: 30000, protein: 35, fat: 40, milkType: "montagne" as MilkType }
   ],
   tankPermeat: [
-    { id: "batch-5", lotNumber: "2605291600", volume: 15000, protein: 0, fat: 400, milkType: "creme" as MilkType }
+    { id: "batch-5", lotNumber: "2605291600", volume: 15000, protein: 0, fat: 400, milkType: "ecreme_savoie" as MilkType }
   ]
 })
 
@@ -589,115 +589,100 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
   const hasSkyr = active.references.some(r => r.name.toLowerCase().includes("skyr"))
   const hasClassic = active.references.some(r => !r.name.toLowerCase().includes("skyr"))
 
-  const wasSkyr = active.isSkyr
   active.isSkyr = hasSkyr
 
-  if (active.isSkyr && !wasSkyr) {
-    if (active.skyrMilkType === undefined) {
-      active.skyrMilkType = "fcv3"
+  // Helper to get protein level for a given preferred milk type list
+  const getCiForTypes = (preferredTypes: MilkType[]) => {
+    let totalVol = 0
+    let totalProt = 0
+    const keys: (keyof typeof state.tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
+    
+    for (const type of preferredTypes) {
+      keys.forEach(k => {
+        state.tlcBatches[k].forEach(b => {
+          if (b.milkType === type) {
+            totalVol += b.volume
+            totalProt += b.volume * b.protein
+          }
+        })
+      })
+      if (totalVol > 0) return totalProt / totalVol
     }
-    if (active.skyrDirectPasto === undefined) {
-      active.skyrDirectPasto = false
-    }
+    return 33.0 // Default if no stock found for preferred types
   }
 
-  // Calculate white mass for each part
-  const skyrWhiteMass = active.references
-    .filter(r => r.name.toLowerCase().includes("skyr"))
-    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+  // Calculate masses by group
+  let skyrWhiteMass = 0
+  let baikoMddWhiteMass = 0 // Baiko and MDD
+  let vdpWhiteMass = 0      // Val de Praz
+  let natureWhiteMass = 0   // Others (Nature)
 
-  const classicSweetenedMass = active.references
-    .filter(r => !r.name.toLowerCase().includes("skyr") && !r.name.toLowerCase().includes("nature"))
-    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
+  active.references.forEach(r => {
+    const mass = (r.potsQty * r.gramPerPot) / 1000
+    const name = r.name.toLowerCase()
+    
+    if (name.includes("skyr")) {
+      skyrWhiteMass += mass
+    } else if (name.includes("baiko") || name.includes("mdd")) {
+      baikoMddWhiteMass += mass / 1.05 // Sweetened roughly
+    } else if (name.includes("val de praz") || name.includes("vdp")) {
+      vdpWhiteMass += mass / 1.05 // Sweetened roughly
+    } else {
+      // Nature or others
+      natureWhiteMass += mass // Unsweetened
+    }
+  })
 
-  const classicUnsweetenedMass = active.references
-    .filter(r => !r.name.toLowerCase().includes("skyr") && r.name.toLowerCase().includes("nature"))
-    .reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-
-  const classicWhiteMass = classicSweetenedMass + classicUnsweetenedMass
-  const classicBaseOsmosedVolume = classicUnsweetenedMass + (classicSweetenedMass / 1.05)
-
-  active.whiteMassKg = skyrWhiteMass + classicWhiteMass
+  const classicWhiteMass = baikoMddWhiteMass + vdpWhiteMass + natureWhiteMass
+  active.whiteMassKg = skyrWhiteMass + (baikoMddWhiteMass * 1.05) + (vdpWhiteMass * 1.05) + natureWhiteMass
   active.status = active.references.length > 0 ? "order" : "idle"
 
-  // 2. Fetch protein level (Ci) for Skyr milk type
-  const skyrRequiredType = active.skyrMilkType === "fcv3"
-    ? "fcv3"
-    : (active.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
+  // Compute Ci for each group
+  const skyrCi = getCiForTypes(["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"])
+  const baikoMddCi = getCiForTypes(["montagne", "savoie"])
+  const vdpCi = getCiForTypes(["savoie"])
+  const natureCi = getCiForTypes(["bio"])
 
-  let skyrTotalVol = 0
-  let skyrTotalProt = 0
-  const keys: (keyof typeof state.tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-  keys.forEach(k => {
-    state.tlcBatches[k].forEach(b => {
-      if (b.milkType === skyrRequiredType) {
-        skyrTotalVol += b.volume
-        skyrTotalProt += b.volume * b.protein
-      }
-    })
-  })
-  const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
+  // Variables to accumulate
+  let totalMilkReceivedVolume = 0
+  let totalOsmosedVolume = 0
+  let totalProtReceived = 0 // for average Ci
+  
+  const processGroup = (whiteMass: number, ci: number) => {
+    if (whiteMass <= 0) return { received: 0, osmosed: 0 }
+    const received = computeRequiredRawMilk(whiteMass, ci, active.targetValue)
+    const osmosed = computeOsmosedVolume(received, ci, active.targetValue)
+    totalMilkReceivedVolume += received
+    totalOsmosedVolume += osmosed
+    totalProtReceived += received * ci
+    return { received, osmosed }
+  }
 
-  // Fetch protein level (Ci) for Classic milk type
-  const classicRequiredType = active.milkType || "bio"
-  let classicTotalVol = 0
-  let classicTotalProt = 0
-  keys.forEach(k => {
-    state.tlcBatches[k].forEach(b => {
-      if (b.milkType === classicRequiredType) {
-        classicTotalVol += b.volume
-        classicTotalProt += b.volume * b.protein
-      }
-    })
-  })
-  const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
   // 3. Compute volumes independently
-  let skyrMilkReceivedVolume = 0
-  let skyrOsmosedVolume = 0
-  let skyrTLSVolumes = { tls1: 0, tls2: 0, tls3: 0 }
-  let skyrSelectedTLSs: string[] = []
-
   if (skyrWhiteMass > 0) {
     if (active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-      skyrMilkReceivedVolume = skyrWhiteMass
-      skyrOsmosedVolume = skyrWhiteMass
+      totalMilkReceivedVolume += skyrWhiteMass
+      totalOsmosedVolume += skyrWhiteMass
+      totalProtReceived += skyrWhiteMass * skyrCi
     } else {
-      skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, active.targetValue)
-      skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, active.targetValue)
+      processGroup(skyrWhiteMass, skyrCi)
     }
-    skyrTLSVolumes = distributeToTLS(skyrMilkReceivedVolume)
-    skyrSelectedTLSs = selectTLSForVolume(skyrMilkReceivedVolume)
   }
 
-  let classicMilkReceivedVolume = 0
-  let classicOsmosedVolume = 0
-  let classicTLSVolumes = { tls1: 0, tls2: 0, tls3: 0 }
-  let classicSelectedTLSs: string[] = []
+  processGroup(baikoMddWhiteMass, baikoMddCi)
+  processGroup(vdpWhiteMass, vdpCi)
+  processGroup(natureWhiteMass, natureCi)
 
-  if (classicWhiteMass > 0) {
-    classicMilkReceivedVolume = computeRequiredRawMilk(classicBaseOsmosedVolume, classicCi, active.targetValue)
-    classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, active.targetValue)
-    classicTLSVolumes = distributeToTLS(classicMilkReceivedVolume)
-    classicSelectedTLSs = selectTLSForVolume(classicMilkReceivedVolume)
-  }
+  active.milkReceivedVolume = totalMilkReceivedVolume
+  active.osmosedVolume = totalOsmosedVolume
 
-  // 4. Combine parts
-  active.milkReceivedVolume = skyrMilkReceivedVolume + classicMilkReceivedVolume
-  active.osmosedVolume = skyrOsmosedVolume + classicOsmosedVolume
-
-  active.tlsVolumes = {
-    tls1: Number((skyrTLSVolumes.tls1 + classicTLSVolumes.tls1).toFixed(3)),
-    tls2: Number((skyrTLSVolumes.tls2 + classicTLSVolumes.tls2).toFixed(3)),
-    tls3: Number((skyrTLSVolumes.tls3 + classicTLSVolumes.tls3).toFixed(3)),
-  }
-
-  const allSelectedTLSs = new Set([...skyrSelectedTLSs, ...classicSelectedTLSs])
-  active.selectedTLSs = Array.from(allSelectedTLSs)
+  const tlsAlloc = distributeToTLS(active.milkReceivedVolume)
+  active.tlsVolumes = tlsAlloc
+  active.selectedTLSs = selectTLSForVolume(active.milkReceivedVolume)
 
   // Weighted average protein level
   if (active.milkReceivedVolume > 0) {
-    const avgProt = (skyrCi * skyrMilkReceivedVolume + classicCi * classicMilkReceivedVolume) / active.milkReceivedVolume
-    active.milkReceptionValue = Number(avgProt.toFixed(3))
+    active.milkReceptionValue = Number((totalProtReceived / active.milkReceivedVolume).toFixed(3))
   } else {
     active.milkReceptionValue = 33.0
   }
@@ -707,7 +692,6 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
     active.pasteurized = true
 
     if (active.isCFManual) {
-      // Keep manual selection, but filter out incompatible cuves
       active.selectedCFs = active.selectedCFs.filter(name => {
         const isCF20 = name === "CF20"
         if (isCF20 && !hasSkyr) return false
@@ -716,13 +700,12 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
       })
     } else {
       if (hasSkyr && hasClassic) {
-        const nonSkyrCFs = selectCuvesForVolume(classicWhiteMass, false)
-        // Force CF20 to be present for Skyr, and select others for classic
+        const nonSkyrCFs = selectCuvesForVolume(active.whiteMassKg - skyrWhiteMass, false)
         active.selectedCFs = Array.from(new Set(["CF20", ...nonSkyrCFs]))
       } else if (hasSkyr) {
         active.selectedCFs = ["CF20"]
       } else {
-        active.selectedCFs = selectCuvesForVolume(classicWhiteMass, false)
+        active.selectedCFs = selectCuvesForVolume(active.whiteMassKg, false)
       }
     }
 
@@ -733,41 +716,12 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
     active.selectedCFs = []
   }
 
-  // 6. Calculate Timing sequentially (sum of independent timings)
-  let skyrTransferTime = 0
-  let skyrOsmoseTime = 0
-  let skyrPowderTime = 0
-  let skyrPastoTime = 0
-
-  if (skyrWhiteMass > 0) {
-    skyrTransferTime = computeTransferTime(skyrMilkReceivedVolume)
-    if (active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-      skyrOsmoseTime = 0
-      skyrPowderTime = 0
-      skyrPastoTime = computePastoTime(skyrWhiteMass)
-    } else {
-      skyrOsmoseTime = computeOsmoseTime(skyrMilkReceivedVolume, skyrCi, active.targetValue)
-      skyrPowderTime = computePowderTime(skyrOsmosedVolume)
-      skyrPastoTime = computePastoTime(skyrWhiteMass)
-    }
-  }
-
-  let classicTransferTime = 0
-  let classicOsmoseTime = 0
-  let classicPowderTime = 0
-  let classicPastoTime = 0
-
-  if (classicWhiteMass > 0) {
-    classicTransferTime = computeTransferTime(classicMilkReceivedVolume)
-    classicOsmoseTime = computeOsmoseTime(classicMilkReceivedVolume, classicCi, active.targetValue)
-    classicPowderTime = computePowderTime(classicOsmosedVolume)
-    classicPastoTime = computePastoTime(classicWhiteMass)
-  }
-
-  active.timing.transferTime = skyrTransferTime + classicTransferTime
-  active.timing.osmoseTime = skyrOsmoseTime + classicOsmoseTime
-  active.timing.powderTime = skyrPowderTime + classicPowderTime
-  active.timing.pastoTime = skyrPastoTime + classicPastoTime
+  // 6. Calculate Timing
+  // We approximate the global timing based on total volumes to keep UI simple
+  active.timing.transferTime = computeTransferTime(active.milkReceivedVolume)
+  active.timing.osmoseTime = computeOsmoseTime(active.milkReceivedVolume, active.milkReceptionValue, active.targetValue)
+  active.timing.powderTime = computePowderTime(active.osmosedVolume)
+  active.timing.pastoTime = computePastoTime(active.whiteMassKg)
   active.timing.maturationTime = DEFAULT_MATURATION_MINUTES
 }
 
@@ -784,7 +738,7 @@ type TLSToSchedule = {
 // Global simulation executor
 export const runMultiCommandSimulation = (
   commands: Command[],
-  tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[] }
+  tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[]; tankPermeat?: Batch[] }
 ): MultiCommandSimResults => {
   let timeOsmosisFree = 0
   let timePowderFree = 0
@@ -799,6 +753,7 @@ export const runMultiCommandSimulation = (
     tlc2: tlcBatchesInitial.tlc2.map(b => ({ ...b })),
     tlc3: tlcBatchesInitial.tlc3.map(b => ({ ...b })),
     tlc4: tlcBatchesInitial.tlc4.map(b => ({ ...b })),
+    tankPermeat: tlcBatchesInitial.tankPermeat ? tlcBatchesInitial.tankPermeat.map(b => ({ ...b })) : [],
   }
 
   const cfAvailableAt: { [tankName: string]: number } = {}
@@ -826,68 +781,43 @@ export const runMultiCommandSimulation = (
     }
   }
 
-  // Pre-allocate selected CF tanks capacities for each command
   const commandCFAllocations: { [commandId: string]: { [cfName: string]: number } } = {}
   const commandCFSelectedList: { [commandId: string]: string[] } = {}
 
+  const getCiForTypes = (preferredTypes: MilkType[], batchesState: typeof tlcBatches) => {
+    let totalVol = 0
+    let totalProt = 0
+    const keys: (keyof typeof batchesState)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
+    for (const type of preferredTypes) {
+      keys.forEach(k => {
+        batchesState[k]?.forEach(b => {
+          if (b.milkType === type) {
+            totalVol += b.volume
+            totalProt += b.volume * b.protein
+          }
+        })
+      })
+      if (totalVol > 0) return totalProt / totalVol
+    }
+    return 33.0
+  }
+
   commands.forEach((cmd) => {
-    const skyrRefs = cmd.references.filter(r => r.name.toLowerCase().includes("skyr"))
-    const classicRefs = cmd.references.filter(r => !r.name.toLowerCase().includes("skyr"))
+    let skyrWhiteMass = 0
+    let baikoMddWhiteMass = 0
+    let vdpWhiteMass = 0
+    let natureWhiteMass = 0
 
-    const skyrWhiteMass = skyrRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicSweetenedMass = classicRefs.filter(r => !r.name.toLowerCase().includes("nature")).reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicUnsweetenedMass = classicRefs.filter(r => r.name.toLowerCase().includes("nature")).reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicWhiteMass = classicSweetenedMass + classicUnsweetenedMass
-    const classicBaseOsmosedVolume = classicUnsweetenedMass + (classicSweetenedMass / 1.05)
-
-    // Find protein level for Skyr milk type
-    const skyrRequiredType = cmd.skyrMilkType === "fcv3" ? "fcv3" : (cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
-    let skyrTotalVol = 0
-    let skyrTotalProt = 0
-    const keys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-    keys.forEach(k => {
-      tlcBatches[k].forEach(b => {
-        if (b.milkType === skyrRequiredType) {
-          skyrTotalVol += b.volume
-          skyrTotalProt += b.volume * b.protein
-        }
-      })
+    cmd.references.forEach(r => {
+      const mass = (r.potsQty * r.gramPerPot) / 1000
+      const name = r.name.toLowerCase()
+      if (name.includes("skyr")) skyrWhiteMass += mass
+      else if (name.includes("baiko") || name.includes("mdd")) baikoMddWhiteMass += mass / 1.05
+      else if (name.includes("val de praz") || name.includes("vdp")) vdpWhiteMass += mass / 1.05
+      else natureWhiteMass += mass
     })
-    const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
 
-    // Find protein level for Classic milk type
-    const classicRequiredType = cmd.milkType || "bio"
-    let classicTotalVol = 0
-    let classicTotalProt = 0
-    keys.forEach(k => {
-      tlcBatches[k].forEach(b => {
-        if (b.milkType === classicRequiredType) {
-          classicTotalVol += b.volume
-          classicTotalProt += b.volume * b.protein
-        }
-      })
-    })
-    const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
-
-    let skyrMilkReceivedVolume = 0
-    let skyrOsmosedVolume = 0
-    if (skyrWhiteMass > 0) {
-      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
-        skyrMilkReceivedVolume = skyrWhiteMass
-        skyrOsmosedVolume = skyrWhiteMass
-      } else {
-        skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, cmd.targetValue)
-        skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, cmd.targetValue)
-      }
-    }
-
-    let classicMilkReceivedVolume = 0
-    let classicOsmosedVolume = 0
-    if (classicWhiteMass > 0) {
-      classicMilkReceivedVolume = computeRequiredRawMilk(classicBaseOsmosedVolume, classicCi, cmd.targetValue)
-      classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, cmd.targetValue)
-    }
-
+    const classicWhiteMass = baikoMddWhiteMass + vdpWhiteMass + natureWhiteMass
     const hasSkyr = skyrWhiteMass > 0
     const hasClassic = classicWhiteMass > 0
 
@@ -911,7 +841,6 @@ export const runMultiCommandSimulation = (
     selectedCFs.forEach(cfName => {
       const tank = CF_TANKS.find(t => t.name === cfName)
       const cap = tank?.capacity ?? 0
-
       if (cfName === "CF20") {
         const allocated = Math.min(remSkyrVol, cap)
         cfAllocatedVolumes[cfName] = Number(allocated.toFixed(3))
@@ -927,76 +856,91 @@ export const runMultiCommandSimulation = (
 
   // Build sequential list of all active TLS tasks across all commands
   const tlsList: TLSToSchedule[] = []
+  
   commands.forEach((cmd, cmdIdx) => {
-    const skyrRefs = cmd.references.filter(r => r.name.toLowerCase().includes("skyr"))
-    const classicRefs = cmd.references.filter(r => !r.name.toLowerCase().includes("skyr"))
+    let skyrWhiteMass = 0
+    let baikoMddWhiteMass = 0
+    let vdpWhiteMass = 0
+    let natureWhiteMass = 0
 
-    const skyrWhiteMass = skyrRefs.reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicSweetenedMass = classicRefs.filter(r => !r.name.toLowerCase().includes("nature")).reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicUnsweetenedMass = classicRefs.filter(r => r.name.toLowerCase().includes("nature")).reduce((sum, r) => sum + (r.potsQty * r.gramPerPot) / 1000, 0)
-    const classicWhiteMass = classicSweetenedMass + classicUnsweetenedMass
-    const classicBaseOsmosedVolume = classicUnsweetenedMass + (classicSweetenedMass / 1.05)
+    cmd.references.forEach(r => {
+      const mass = (r.potsQty * r.gramPerPot) / 1000
+      const name = r.name.toLowerCase()
+      if (name.includes("skyr")) skyrWhiteMass += mass
+      else if (name.includes("baiko") || name.includes("mdd")) baikoMddWhiteMass += mass / 1.05
+      else if (name.includes("val de praz") || name.includes("vdp")) vdpWhiteMass += mass / 1.05
+      else natureWhiteMass += mass
+    })
 
-    const skyrRequiredType = cmd.skyrMilkType === "fcv3" ? "fcv3" : (cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne")
-    let skyrTotalVol = 0
-    let skyrTotalProt = 0
-    const keys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-    keys.forEach(k => {
-      tlcBatches[k].forEach(b => {
-        if (b.milkType === skyrRequiredType) {
-          skyrTotalVol += b.volume
-          skyrTotalProt += b.volume * b.protein
+    const scheduleGroup = (whiteMass: number, preferredTypes: MilkType[], groupName: string) => {
+      if (whiteMass <= 0) return
+      
+      const ci = getCiForTypes(preferredTypes, tlcBatches)
+      const reqVol = computeRequiredRawMilk(whiteMass, ci, cmd.targetValue)
+      const tlsAlloc = distributeToTLS(reqVol)
+
+      const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
+      activeTLSKeys.forEach((key) => {
+        const vol = tlsAlloc[key]
+        if (vol > 0) {
+          let remainingToDraw = vol
+          let totalProtDrawn = 0
+          let actualDrawn = 0
+          let lastTypeDrawn = preferredTypes[0]
+
+          const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
+          
+          for (const type of preferredTypes) {
+            if (remainingToDraw <= 0) break
+            for (const k of tlcKeys) {
+              if (remainingToDraw <= 0) break
+              const batches = tlcBatches[k]
+              if (!batches) continue
+              for (let i = 0; i < batches.length; i++) {
+                if (remainingToDraw <= 0) break
+                const b = batches[i]
+                if (b.milkType === type && b.volume > 0) {
+                  const draw = Math.min(b.volume, remainingToDraw)
+                  b.volume = Number((b.volume - draw).toFixed(3))
+                  remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+                  totalProtDrawn += draw * b.protein
+                  actualDrawn += draw
+                  lastTypeDrawn = type
+                }
+              }
+              tlcBatches[k] = batches.filter(b => b.volume > 0)
+            }
+          }
+
+          const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : ci
+          const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
+
+          tlsList.push({
+            commandId: cmd.id,
+            commandIdx: cmdIdx,
+            commandName: cmd.name + " (" + groupName + ")",
+            tlsKey: key,
+            rawVolume: vol,
+            osmosedVolume: osmVol,
+            milkType: lastTypeDrawn,
+          })
         }
       })
-    })
-    const skyrCi = skyrTotalVol > 0 ? skyrTotalProt / skyrTotalVol : 33.0
-
-    const classicRequiredType = cmd.milkType || "bio"
-    let classicTotalVol = 0
-    let classicTotalProt = 0
-    keys.forEach(k => {
-      tlcBatches[k].forEach(b => {
-        if (b.milkType === classicRequiredType) {
-          classicTotalVol += b.volume
-          classicTotalProt += b.volume * b.protein
-        }
-      })
-    })
-    const classicCi = classicTotalVol > 0 ? classicTotalProt / classicTotalVol : 33.0
-
-    let skyrMilkReceivedVolume = 0
-    let skyrOsmosedVolume = 0
-    if (skyrWhiteMass > 0) {
-      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
-        skyrMilkReceivedVolume = skyrWhiteMass
-        skyrOsmosedVolume = skyrWhiteMass
-      } else {
-        skyrMilkReceivedVolume = computeRequiredRawMilk(skyrWhiteMass, skyrCi, cmd.targetValue)
-        skyrOsmosedVolume = computeOsmosedVolume(skyrMilkReceivedVolume, skyrCi, cmd.targetValue)
-      }
     }
 
-    let classicMilkReceivedVolume = 0
-    let classicOsmosedVolume = 0
-    if (classicWhiteMass > 0) {
-      classicMilkReceivedVolume = computeRequiredRawMilk(classicBaseOsmosedVolume, classicCi, cmd.targetValue)
-      classicOsmosedVolume = computeOsmosedVolume(classicMilkReceivedVolume, classicCi, cmd.targetValue)
-    }
-
-    // Schedule Skyr Part (if any)
     if (skyrWhiteMass > 0) {
       if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
-        let remainingToDraw = skyrMilkReceivedVolume
-        const rawMilkType = "fcv3"
-
-        const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
+        let remainingToDraw = skyrWhiteMass
+        const type = "fcv3"
+        const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
         for (const k of tlcKeys) {
           if (remainingToDraw <= 0) break
           const batches = tlcBatches[k]
+          if (!batches) continue
           for (let i = 0; i < batches.length; i++) {
             if (remainingToDraw <= 0) break
             const b = batches[i]
-            if (b.milkType === rawMilkType && b.volume > 0) {
+            if (b.milkType === type && b.volume > 0) {
               const draw = Math.min(b.volume, remainingToDraw)
               b.volume = Number((b.volume - draw).toFixed(3))
               remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
@@ -1010,103 +954,18 @@ export const runMultiCommandSimulation = (
           commandIdx: cmdIdx,
           commandName: cmd.name + " (Skyr)",
           tlsKey: "direct",
-          rawVolume: skyrMilkReceivedVolume,
-          osmosedVolume: skyrOsmosedVolume,
-          milkType: "fcv3",
+          rawVolume: skyrWhiteMass,
+          osmosedVolume: skyrWhiteMass,
+          milkType: type,
         })
       } else {
-        const tlsAlloc = distributeToTLS(skyrMilkReceivedVolume)
-        const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
-        activeTLSKeys.forEach((key) => {
-          const vol = tlsAlloc[key]
-          if (vol > 0) {
-            let remainingToDraw = vol
-            const rawMilkType = cmd.skyrMilkType === "ecreme_savoie" ? "savoie" : "montagne"
-
-            let totalProtDrawn = 0
-            let actualDrawn = 0
-
-            const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-            for (const k of tlcKeys) {
-              if (remainingToDraw <= 0) break
-              const batches = tlcBatches[k]
-              for (let i = 0; i < batches.length; i++) {
-                if (remainingToDraw <= 0) break
-                const b = batches[i]
-                if (b.milkType === rawMilkType && b.volume > 0) {
-                  const draw = Math.min(b.volume, remainingToDraw)
-                  b.volume = Number((b.volume - draw).toFixed(3))
-                  remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-                  totalProtDrawn += draw * b.protein
-                  actualDrawn += draw
-                }
-              }
-              tlcBatches[k] = batches.filter(b => b.volume > 0)
-            }
-
-            const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : skyrCi
-            const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
-
-            tlsList.push({
-              commandId: cmd.id,
-              commandIdx: cmdIdx,
-              commandName: cmd.name + " (Skyr)",
-              tlsKey: key,
-              rawVolume: vol,
-              osmosedVolume: osmVol,
-              milkType: rawMilkType,
-            })
-          }
-        })
+        scheduleGroup(skyrWhiteMass, ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"], "Skyr")
       }
     }
 
-    // Schedule Classic Part (if any)
-    if (classicWhiteMass > 0) {
-      const tlsAlloc = distributeToTLS(classicMilkReceivedVolume)
-      const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
-      activeTLSKeys.forEach((key) => {
-        const vol = tlsAlloc[key]
-        if (vol > 0) {
-          let remainingToDraw = vol
-          const rawMilkType = cmd.milkType || "bio"
-
-          let totalProtDrawn = 0
-          let actualDrawn = 0
-
-          const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-          for (const k of tlcKeys) {
-            if (remainingToDraw <= 0) break
-            const batches = tlcBatches[k]
-            for (let i = 0; i < batches.length; i++) {
-              if (remainingToDraw <= 0) break
-              const b = batches[i]
-              if (b.milkType === rawMilkType && b.volume > 0) {
-                const draw = Math.min(b.volume, remainingToDraw)
-                b.volume = Number((b.volume - draw).toFixed(3))
-                remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-                totalProtDrawn += draw * b.protein
-                actualDrawn += draw
-              }
-            }
-            tlcBatches[k] = batches.filter(b => b.volume > 0)
-          }
-
-          const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : classicCi
-          const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
-
-          tlsList.push({
-            commandId: cmd.id,
-            commandIdx: cmdIdx,
-            commandName: cmd.name + " (Classique)",
-            tlsKey: key,
-            rawVolume: vol,
-            osmosedVolume: osmVol,
-            milkType: rawMilkType,
-          })
-        }
-      })
-    }
+    scheduleGroup(baikoMddWhiteMass, ["montagne", "savoie"], "Baiko/MDD")
+    scheduleGroup(vdpWhiteMass, ["savoie"], "Val de Praz")
+    scheduleGroup(natureWhiteMass, ["bio"], "Nature")
   })
 
   // Track the filled volumes of CF tanks per command

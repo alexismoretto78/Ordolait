@@ -7,14 +7,11 @@ import {
   addCommand,
   deleteCommand,
   setActiveCommand,
-  setCommandMilkType,
   setProductionStartTime,
   addReference,
   updateReference,
   deleteReference,
-  setSkyrMilkType,
   setSkyrDirectPasto,
-  MilkType,
   updateCommandName
 } from "../lib/orderSlice"
 

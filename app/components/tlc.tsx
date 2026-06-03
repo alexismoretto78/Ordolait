@@ -308,9 +308,8 @@ export default function TLC() {
                   <button
                     type="button"
                     onClick={() => {
-                      // If empty, set default milkType of this tank
                       if (batches.length === 0) {
-                        const defaultType = key === "tlc1" ? "bio" : key === "tlc2" ? "fcv3" : key === "tlc3" ? "savoie" : key === "tankPermeat" ? "creme" : "montagne"
+                        const defaultType = key === "tlc1" ? "bio" : key === "tlc2" ? "fcv3" : key === "tlc3" ? "savoie" : key === "tankPermeat" ? "ecreme_savoie" : "montagne"
                         setNewBatchMilkType(defaultType)
                       }
                       setShowAddForm(prev => ({ ...prev, [key]: true }))
@@ -346,6 +345,9 @@ export default function TLC() {
                           <option value="fcv3">🧪 FCV3</option>
                           <option value="savoie">🏔️ Savoie</option>
                           <option value="montagne">⛰️ Montagne</option>
+                          <option value="ecreme_savoie">💧 Écrémé Savoie</option>
+                          <option value="ecreme_montagne">💧 Écrémé Montagne</option>
+                          <option value="creme">🧈 Crème</option>
                         </select>
                       </div>
                     )}
