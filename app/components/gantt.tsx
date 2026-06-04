@@ -139,7 +139,7 @@ export default function Gantt() {
                         {task.label}
                       </div>
                       <div className="gantt-row-duration" style={{ flex: "0 0 100px", width: 100, fontSize: "0.8rem" }}>
-                        {task.key === "grouped-cf-wash" ? "30m / cuve" : formatTime(task.durationMinutes)}
+                        {formatTime(task.durationMinutes)}
                       </div>
                       <div className="gantt-timeline-container" style={{ flex: "1 1 auto" }}>
                         <div className="gantt-bar-bg">
@@ -212,7 +212,7 @@ export default function Gantt() {
                 <strong>Maturation CF</strong> : Durée fixe de <strong>6 heures</strong>.
               </li>
               <li>
-                <strong>Lavage des Cuves CF</strong> : Nettoyage automatique obligatoire de <strong>30 minutes</strong> après chaque conditionnement (visible en gris).
+                <strong>Lavage des Cuves CF</strong> : Nettoyage déclenché automatiquement <strong>dès que la cuve est entièrement vidée (volume à 0)</strong>. Durée de <strong>20 minutes</strong> (visible en gris, +90 min de lavage ligne pour la CF20).
               </li>
               <li>
                 <strong>Conditionnement</strong> : <strong>3 500 pots/h</strong> sur ATIA, <strong>10 000 pots/h</strong> sur Grunwald (ou <strong>13 500 pots/h</strong> combinés).

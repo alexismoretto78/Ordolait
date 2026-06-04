@@ -756,13 +756,13 @@ export const runMultiCommandSimulation = (
   let timeAtia = 0
   let timeWashLine1Free = 0
   let timeWashLine2Free = 0
-  let timeOsmoseWashFree = 0
   let timeSoutirageWashFree = 0
-
+  let timeOsmoseWashFree = 0
+  
   let osmosisCount = 0
   let pastoCount = 0
+  let last48hWashEnd = 0
 
-  // Clone TLC batches to consume them during simulation
   const tlcBatches = {
     tlc1: tlcBatchesInitial.tlc1.map(b => ({ ...b })),
     tlc2: tlcBatchesInitial.tlc2.map(b => ({ ...b })),
@@ -771,387 +771,181 @@ export const runMultiCommandSimulation = (
     tankPermeat: tlcBatchesInitial.tankPermeat ? tlcBatchesInitial.tankPermeat.map(b => ({ ...b })) : [],
   }
 
-  let last48hWashEnd = 0
-
   const cfAvailableAt: { [tankName: string]: number } = {}
   CF_TANKS.forEach(t => { cfAvailableAt[t.name] = 0 })
 
-  const maturationEndAt: { [tankName: string]: number } = {}
-  CF_TANKS.forEach(t => { maturationEndAt[t.name] = 0 })
-
   const tlsAvailableAt = { TLS1: 0, TLS2: 0, TLS3: 0 }
-  const commandTankMaturationEnd: { [commandId: string]: { [cfName: string]: number } } = {}
-
-  const commandsResults: { [id: string]: CommandSimResult } = {}
+  
   const ganttTasks: GanttTask[] = []
+  
+  const globalGroups = {
+    skyr: { whiteMassKg: 0, refs: [] as {cmd: Command, ref: ProductReference}[] },
+    baiko_mdd: { whiteMassKg: 0, refs: [] as {cmd: Command, ref: ProductReference}[] },
+    vdp: { whiteMassKg: 0, refs: [] as {cmd: Command, ref: ProductReference}[] },
+    nature: { whiteMassKg: 0, refs: [] as {cmd: Command, ref: ProductReference}[] }
+  }
 
-  const getCommandColor = (idx: number, step: string) => {
+  commands.forEach(cmd => {
+    cmd.references.forEach(r => {
+      const mass = (r.potsQty * r.gramPerPot) / 1000
+      const name = r.name.toLowerCase()
+      if (name.includes("skyr")) {
+        globalGroups.skyr.whiteMassKg += mass
+        globalGroups.skyr.refs.push({cmd, ref: r})
+      } else if (name.includes("baiko") || name.includes("mdd")) {
+        globalGroups.baiko_mdd.whiteMassKg += mass / 1.05
+        globalGroups.baiko_mdd.refs.push({cmd, ref: r})
+      } else if (name.includes("val de praz") || name.includes("vdp")) {
+        globalGroups.vdp.whiteMassKg += mass / 1.05
+        globalGroups.vdp.refs.push({cmd, ref: r})
+      } else {
+        globalGroups.nature.whiteMassKg += mass
+        globalGroups.nature.refs.push({cmd, ref: r})
+      }
+    })
+  })
+
+  const readyTanks: { [type: string]: { cfName: string, readyTime: number, volume: number }[] } = {
+    skyr: [],
+    baiko_mdd: [],
+    vdp: [],
+    nature: []
+  }
+
+  const typesToProduce = [
+    { key: "skyr", ...globalGroups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true },
+    { key: "baiko_mdd", ...globalGroups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false },
+    { key: "vdp", ...globalGroups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false },
+    { key: "nature", ...globalGroups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false },
+  ]
+
+  const drawMilk = (reqVol: number, preferredTypes: MilkType[]) => {
+    let remainingToDraw = reqVol
+    let totalProtDrawn = 0
+    let actualDrawn = 0
+    let lastTypeDrawn = preferredTypes[0]
+
+    const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
+    
+    for (const type of preferredTypes) {
+      if (remainingToDraw <= 0) break
+      for (const k of tlcKeys) {
+        if (remainingToDraw <= 0) break
+        const batches = tlcBatches[k]
+        if (!batches) continue
+        for (let i = 0; i < batches.length; i++) {
+          if (remainingToDraw <= 0) break
+          const b = batches[i]
+          if (b.milkType === type && b.volume > 0) {
+            const draw = Math.min(b.volume, remainingToDraw)
+            b.volume = Number((b.volume - draw).toFixed(3))
+            remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
+            totalProtDrawn += draw * b.protein
+            actualDrawn += draw
+            lastTypeDrawn = type
+          }
+        }
+        tlcBatches[k] = batches.filter(b => b.volume > 0)
+      }
+    }
+    return { actualDrawn, totalProtDrawn, lastTypeDrawn }
+  }
+
+  let colorIdx = 0
+  const getNextColor = (step: string) => {
     const hues = [220, 142, 275, 38, 345, 95, 195]
-    const hue = hues[idx % hues.length]
+    const hue = hues[colorIdx % hues.length]
     switch (step) {
       case "transfer": return `hsl(${hue}, 80%, 60%)`
       case "osmose": return `hsl(${hue}, 75%, 45%)`
       case "pasto": return `hsl(${hue}, 80%, 40%)`
       case "maturation": return `hsl(${hue}, 60%, 50%)`
-      case "packaging_atia": return `hsl(${hue}, 50%, 65%)`
-      case "packaging_grun": return `hsl(${hue}, 90%, 55%)`
       default: return `hsl(${hue}, 70%, 50%)`
     }
   }
 
-  const commandCFAllocations: { [commandId: string]: { [cfName: string]: number } } = {}
-  const commandCFSelectedList: { [commandId: string]: string[] } = {}
-
-  const getCiForTypes = (preferredTypes: MilkType[], batchesState: typeof tlcBatches) => {
-    let totalVol = 0
-    let totalProt = 0
-    const keys: (keyof typeof batchesState)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
-    for (const type of preferredTypes) {
-      keys.forEach(k => {
-        batchesState[k]?.forEach(b => {
-          if (b.milkType === type) {
-            totalVol += b.volume
-            totalProt += b.volume * b.protein
-          }
-        })
-      })
-      if (totalVol > 0) return totalProt / totalVol
+  const commandsResults: { [id: string]: CommandSimResult } = {}
+  commands.forEach(cmd => {
+    commandsResults[cmd.id] = {
+      id: cmd.id,
+      name: cmd.name,
+      transferStart: 0,
+      transferEnd: 0,
+      osmoseStart: 0,
+      osmoseEnd: 0,
+      powderStart: 0,
+      powderEnd: 0,
+      pastoStart: 0,
+      pastoEnd: 0,
+      maturationStart: 0,
+      maturationEnd: 0,
+      packagingStart: 999999,
+      packagingEnd: 0,
+      packagingAtiaDuration: 0,
+      packagingGrunDuration: 0,
+      totalDuration: 0,
+      referencesResults: []
     }
-    return 33.0
-  }
-
-  commands.forEach((cmd) => {
-    let skyrWhiteMass = 0
-    let baikoMddWhiteMass = 0
-    let vdpWhiteMass = 0
-    let natureWhiteMass = 0
-
-    cmd.references.forEach(r => {
-      const mass = (r.potsQty * r.gramPerPot) / 1000
-      const name = r.name.toLowerCase()
-      if (name.includes("skyr")) skyrWhiteMass += mass
-      else if (name.includes("baiko") || name.includes("mdd")) baikoMddWhiteMass += mass / 1.05
-      else if (name.includes("val de praz") || name.includes("vdp")) vdpWhiteMass += mass / 1.05
-      else natureWhiteMass += mass
-    })
-
-    const classicWhiteMass = baikoMddWhiteMass + vdpWhiteMass + natureWhiteMass
-    const hasSkyr = skyrWhiteMass > 0
-    const hasClassic = classicWhiteMass > 0
-
-    let selectedCFs = cmd.selectedCFs
-    if (selectedCFs.length === 0) {
-      if (hasSkyr && hasClassic) {
-        const nonSkyrCFs = selectCuvesForVolume(classicWhiteMass, false)
-        selectedCFs = ["CF20", ...nonSkyrCFs]
-      } else if (hasSkyr) {
-        selectedCFs = ["CF20"]
-      } else {
-        selectedCFs = selectCuvesForVolume(classicWhiteMass, false)
-      }
-    }
-    commandCFSelectedList[cmd.id] = selectedCFs
-
-    const cfAllocatedVolumes: { [tank: string]: number } = {}
-    let remSkyrVol = skyrWhiteMass
-    let remNonSkyrVol = classicWhiteMass
-
-    selectedCFs.forEach(cfName => {
-      const tank = CF_TANKS.find(t => t.name === cfName)
-      const cap = tank?.capacity ?? 0
-      if (cfName === "CF20") {
-        const allocated = Math.min(remSkyrVol, cap)
-        cfAllocatedVolumes[cfName] = Number(allocated.toFixed(3))
-        remSkyrVol = Math.max(0, remSkyrVol - allocated)
-      } else {
-        const allocated = Math.min(remNonSkyrVol, cap)
-        cfAllocatedVolumes[cfName] = Number(allocated.toFixed(3))
-        remNonSkyrVol = Math.max(0, remNonSkyrVol - allocated)
-      }
-    })
-    commandCFAllocations[cmd.id] = cfAllocatedVolumes
   })
 
-  // Build sequential list of all active TLS tasks across all commands
-  const tlsList: TLSToSchedule[] = []
-  
-  commands.forEach((cmd, cmdIdx) => {
-    let skyrWhiteMass = 0
-    let baikoMddWhiteMass = 0
-    let vdpWhiteMass = 0
-    let natureWhiteMass = 0
+  const cfEmptyTimes: { [cfName: string]: number } = {}
 
-    cmd.references.forEach(r => {
-      const mass = (r.potsQty * r.gramPerPot) / 1000
-      const name = r.name.toLowerCase()
-      if (name.includes("skyr")) skyrWhiteMass += mass
-      else if (name.includes("baiko") || name.includes("mdd")) baikoMddWhiteMass += mass / 1.05
-      else if (name.includes("val de praz") || name.includes("vdp")) vdpWhiteMass += mass / 1.05
-      else natureWhiteMass += mass
-    })
-
-    const scheduleGroup = (whiteMass: number, preferredTypes: MilkType[], groupName: string) => {
-      if (whiteMass <= 0) return
-      
-      const ci = getCiForTypes(preferredTypes, tlcBatches)
-      const reqVol = computeRequiredRawMilk(whiteMass, ci, cmd.targetValue)
-      const tlsAlloc = distributeToTLS(reqVol)
-
-      const activeTLSKeys: (keyof typeof tlsAlloc)[] = ["tls2", "tls3", "tls1"]
-      activeTLSKeys.forEach((key) => {
-        const vol = tlsAlloc[key]
-        if (vol > 0) {
-          let remainingToDraw = vol
-          let totalProtDrawn = 0
-          let actualDrawn = 0
-          let lastTypeDrawn = preferredTypes[0]
-
-          const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
-          
-          for (const type of preferredTypes) {
-            if (remainingToDraw <= 0) break
-            for (const k of tlcKeys) {
-              if (remainingToDraw <= 0) break
-              const batches = tlcBatches[k]
-              if (!batches) continue
-              for (let i = 0; i < batches.length; i++) {
-                if (remainingToDraw <= 0) break
-                const b = batches[i]
-                if (b.milkType === type && b.volume > 0) {
-                  const draw = Math.min(b.volume, remainingToDraw)
-                  b.volume = Number((b.volume - draw).toFixed(3))
-                  remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-                  totalProtDrawn += draw * b.protein
-                  actualDrawn += draw
-                  lastTypeDrawn = type
-                }
-              }
-              tlcBatches[k] = batches.filter(b => b.volume > 0)
-            }
-          }
-
-          const tlsDrawnProtein = actualDrawn > 0 ? totalProtDrawn / actualDrawn : ci
-          const osmVol = computeOsmosedVolume(vol, tlsDrawnProtein, cmd.targetValue)
-
-          tlsList.push({
-            commandId: cmd.id,
-            commandIdx: cmdIdx,
-            commandName: cmd.name + " (" + groupName + ")",
-            tlsKey: key,
-            rawVolume: vol,
-            osmosedVolume: osmVol,
-            milkType: lastTypeDrawn,
-          })
-        }
-      })
-    }
-
-    if (skyrWhiteMass > 0) {
-      if (cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto) {
-        let remainingToDraw = skyrWhiteMass
-        const type = "fcv3"
-        const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
-        for (const k of tlcKeys) {
-          if (remainingToDraw <= 0) break
-          const batches = tlcBatches[k]
-          if (!batches) continue
-          for (let i = 0; i < batches.length; i++) {
-            if (remainingToDraw <= 0) break
-            const b = batches[i]
-            if (b.milkType === type && b.volume > 0) {
-              const draw = Math.min(b.volume, remainingToDraw)
-              b.volume = Number((b.volume - draw).toFixed(3))
-              remainingToDraw = Number((remainingToDraw - draw).toFixed(3))
-            }
-          }
-          tlcBatches[k] = batches.filter(b => b.volume > 0)
-        }
-
-        tlsList.push({
-          commandId: cmd.id,
-          commandIdx: cmdIdx,
-          commandName: cmd.name + " (Skyr)",
-          tlsKey: "direct",
-          rawVolume: skyrWhiteMass,
-          osmosedVolume: skyrWhiteMass,
-          milkType: type,
-        })
-      } else {
-        scheduleGroup(skyrWhiteMass, ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"], "Skyr")
-      }
-    }
-
-    scheduleGroup(baikoMddWhiteMass, ["montagne", "savoie"], "Baiko/MDD")
-    scheduleGroup(vdpWhiteMass, ["savoie"], "Val de Praz")
-    scheduleGroup(natureWhiteMass, ["bio"], "Nature")
-  })
-
-  // Track the filled volumes of CF tanks per command
-  const cfTanksFilledForCommand: { [commandId: string]: { [cfName: string]: number } } = {}
-  commands.forEach((cmd) => {
-    cfTanksFilledForCommand[cmd.id] = {}
-    commandCFSelectedList[cmd.id].forEach(cf => {
-      cfTanksFilledForCommand[cmd.id][cf] = 0
-    })
-  })
-
-  // Track detailed metrics for command results
-  const cmdMinStart: { [id: string]: number } = {}
-  const cmdMaxEnd: { [id: string]: number } = {}
-  const cmdTransStart: { [id: string]: number } = {}
-  const cmdTransEnd: { [id: string]: number } = {}
-  const cmdOsmoseStart: { [id: string]: number } = {}
-  const cmdOsmoseEnd: { [id: string]: number } = {}
-  const cmdPastoStart: { [id: string]: number } = {}
-  const cmdPastoEnd: { [id: string]: number } = {}
-
-  // Process all commands sequentially to ensure cfAvailableAt is correctly propagated
-  commands.forEach((cmd, cmdIdx) => {
-    const cmdTlsItems = tlsList.filter(t => t.commandId === cmd.id)
+  typesToProduce.forEach(group => {
+    if (group.whiteMassKg <= 0) return
     
-    // 1. Process TLSs chronologically for this command
-    cmdTlsItems.forEach((tlsItem) => {
-    const isDirect = tlsItem.tlsKey === "direct"
-    const cmd = commands.find(c => c.id === tlsItem.commandId)!
-
-    if (isDirect) {
-      // 1. Direct Transfer TLC -> Pasto (CF20)
-      const transferStart = 0
-      const transferDuration = computeTransferTime(tlsItem.rawVolume)
-      const transferEnd = transferStart + transferDuration
-
-      if (cmdTransStart[tlsItem.commandId] === undefined) {
-        cmdTransStart[tlsItem.commandId] = transferStart
+    // Calculate total emptying time dynamically based on the exact packaging speeds for this group's references
+    let totalGroupEmptyMinutes = 0
+    group.refs.forEach(({cmd, ref}) => {
+      let mass = (ref.potsQty * ref.gramPerPot) / 1000
+      const dest = cmd.refDestinations?.[ref.id] || "both"
+      
+      let atiaKgPerHour = (3500 * ref.gramPerPot) / 1000
+      let grunKgPerHour = (10000 * ref.gramPerPot) / 1000
+      
+      if (dest === "atia") {
+        totalGroupEmptyMinutes += (mass / atiaKgPerHour) * 60
+      } else if (dest === "grunwald") {
+        totalGroupEmptyMinutes += (mass / grunKgPerHour) * 60
       } else {
-        cmdTransStart[tlsItem.commandId] = Math.min(cmdTransStart[tlsItem.commandId], transferStart)
+        let bothKgPerHour = atiaKgPerHour + grunKgPerHour
+        totalGroupEmptyMinutes += (mass / bothKgPerHour) * 60
       }
-      cmdTransEnd[tlsItem.commandId] = Math.max(cmdTransEnd[tlsItem.commandId] || 0, transferEnd)
+    })
 
-      cmdOsmoseStart[tlsItem.commandId] = transferEnd
-      cmdOsmoseEnd[tlsItem.commandId] = transferEnd
+    let remWhiteMass = group.whiteMassKg
+    
+    const CHUNK_SIZE = 5200 
+    
+    let groupPackagingAvailableAt = 0
 
+    while (remWhiteMass > 0) {
+      const chunkMass = Math.min(remWhiteMass, CHUNK_SIZE)
+      remWhiteMass -= chunkMass
+      
+      const targetVal = 41 
+      const reqRaw = chunkMass * (targetVal / 33.0) 
+      const { actualDrawn, totalProtDrawn, lastTypeDrawn } = drawMilk(reqRaw, group.preferredTypes)
+      const ci = actualDrawn > 0 ? totalProtDrawn / actualDrawn : 33.0
+      
+      const transferDuration = computeTransferTime(actualDrawn)
+      const transferStart = tlsAvailableAt["TLS2"]
+      const transferEnd = transferStart + transferDuration
+      tlsAvailableAt["TLS2"] = transferEnd
+      
       ganttTasks.push({
-        key: `${tlsItem.commandId}-skyr-direct-transfer`,
-        label: `${tlsItem.commandName} : Transfert direct TLC ➔ Pasto`,
+        key: `transfer-${group.key}-${Date.now()}-${Math.random()}`,
+        label: `Prod Cont. (${group.key}) : Transfert TLC ➔ TLS2`,
         startMinute: transferStart,
         durationMinutes: transferDuration,
-        color: getCommandColor(tlsItem.commandIdx, "transfer"),
+        color: getNextColor("transfer"),
       })
 
-      // 2. Direct Pasteurization
-      const pastoStart = Math.max(transferEnd, Math.max(timePastoFree, cfAvailableAt["CF20"] || 0))
-      const pastoDuration = computePastoTime(tlsItem.osmosedVolume)
-      const pastoEnd = pastoStart + pastoDuration
-      timePastoFree = pastoEnd
-
-      if (cmdPastoStart[tlsItem.commandId] === undefined) {
-        cmdPastoStart[tlsItem.commandId] = pastoStart
-      } else {
-        cmdPastoStart[tlsItem.commandId] = Math.min(cmdPastoStart[tlsItem.commandId], pastoStart)
-      }
-      cmdPastoEnd[tlsItem.commandId] = Math.max(cmdPastoEnd[tlsItem.commandId] || 0, pastoEnd)
-
-      ganttTasks.push({
-        key: `${tlsItem.commandId}-skyr-direct-pasto`,
-        label: `${tlsItem.commandName} : Pasteurisation Directe (CF20)`,
-        startMinute: pastoStart,
-        durationMinutes: pastoDuration,
-        color: getCommandColor(tlsItem.commandIdx, "pasto"),
-      })
-
-      // 3. Maturation in CF20
-      const maturationStart = pastoEnd
-      const maturationEnd = pastoEnd + 360
-      maturationEndAt["CF20"] = maturationEnd
-      if (!commandTankMaturationEnd[tlsItem.commandId]) {
-        commandTankMaturationEnd[tlsItem.commandId] = {}
-      }
-      commandTankMaturationEnd[tlsItem.commandId]["CF20"] = maturationEnd
-
-      ganttTasks.push({
-        key: `${tlsItem.commandId}-skyr-maturation-cf20`,
-        label: `${tlsItem.commandName} : Maturation CF20`,
-        startMinute: maturationStart,
-        durationMinutes: 360,
-        color: getCommandColor(tlsItem.commandIdx, "maturation"),
-      })
-
-      if (cmdMinStart[tlsItem.commandId] === undefined) {
-        cmdMinStart[tlsItem.commandId] = transferStart
-      } else {
-        cmdMinStart[tlsItem.commandId] = Math.min(cmdMinStart[tlsItem.commandId], transferStart)
-      }
-    } else {
-      // Normal TLS-based processing
-      const TLS_NAME = tlsItem.tlsKey.toUpperCase() as "TLS1" | "TLS2" | "TLS3"
-      const isEcreme = tlsItem.commandName.includes("Skyr") && (cmd.skyrMilkType === "ecreme_savoie" || cmd.skyrMilkType === "ecreme_montagne")
-
-      let transferStart = tlsAvailableAt[TLS_NAME]
-      let transferDuration = computeTransferTime(tlsItem.rawVolume)
-      let transferEnd = transferStart + transferDuration
-
-      if (isEcreme) {
-        // Skimming step: TLC -> Tank Retentat
-        const skimmingStart = 0
-        const skimmingDuration = computeTransferTime(tlsItem.rawVolume)
-        const skimmingEnd = skimmingStart + skimmingDuration
-
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${TLS_NAME}-skimming`,
-          label: `${tlsItem.commandName} : Écrémage TLC ➔ Tank Retentat`,
-          startMinute: skimmingStart,
-          durationMinutes: skimmingDuration,
-          color: "hsl(200, 40%, 75%)",
-        })
-
-        // Then transfer Retentat -> TLS
-        transferStart = Math.max(skimmingEnd, tlsAvailableAt[TLS_NAME])
-        transferEnd = transferStart + transferDuration
-
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${TLS_NAME}-transfer`,
-          label: `${tlsItem.commandName} : Transfert Retentat ➔ ${TLS_NAME}`,
-          startMinute: transferStart,
-          durationMinutes: transferDuration,
-          color: getCommandColor(tlsItem.commandIdx, "transfer"),
-        })
-      } else {
-        ganttTasks.push({
-          key: `${tlsItem.commandId}-${TLS_NAME}-transfer`,
-          label: `${tlsItem.commandName} : Transfert ${TLS_NAME}`,
-          startMinute: transferStart,
-          durationMinutes: transferDuration,
-          color: getCommandColor(tlsItem.commandIdx, "transfer"),
-        })
-      }
-
-      if (cmdTransStart[tlsItem.commandId] === undefined) {
-        cmdTransStart[tlsItem.commandId] = isEcreme ? 0 : transferStart
-      } else {
-        cmdTransStart[tlsItem.commandId] = Math.min(cmdTransStart[tlsItem.commandId], isEcreme ? 0 : transferStart)
-      }
-      cmdTransEnd[tlsItem.commandId] = Math.max(cmdTransEnd[tlsItem.commandId] || 0, transferEnd)
-
-      // Get protein level for this specific GANTT task to calculate osmosis time
-      let tVol = 0
-      let tProt = 0
-      const tKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4"]
-      tKeys.forEach(k => {
-        tlcBatches[k].forEach(b => {
-          if (b.milkType === tlsItem.milkType) {
-            tVol += b.volume
-            tProt += b.volume * b.protein
-          }
-        })
-      })
-      const tlsItemCi = tVol > 0 ? tProt / tVol : 33.0
-
-      // 2. Schedule Osmosis
+      // Osmosis Wash Check
       let osmoseWashInserted = false
       if (timeOsmosisFree > 0 && Math.max(transferEnd, timeOsmosisFree) - timeOsmosisFree >= 60) {
         const washStart = Math.max(timeOsmosisFree, timeOsmoseWashFree)
         ganttTasks.push({
-          key: `osm-wash-${tlsItem.commandId}-${TLS_NAME}-court`,
+          key: `osm-wash-${group.key}-court-${Math.random()}`,
           label: `Lavage Osmoseur (COURT)`,
           startMinute: washStart,
           durationMinutes: 90,
@@ -1163,7 +957,7 @@ export const runMultiCommandSimulation = (
       } else if (osmosisCount >= 3) {
         const washStart = Math.max(transferEnd, timeOsmosisFree, timeOsmoseWashFree)
         ganttTasks.push({
-          key: `osm-wash-${tlsItem.commandId}-${TLS_NAME}-long`,
+          key: `osm-wash-${group.key}-long-${Math.random()}`,
           label: `Lavage Osmoseur (LONG)`,
           startMinute: washStart,
           durationMinutes: 150,
@@ -1173,550 +967,328 @@ export const runMultiCommandSimulation = (
         timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
         osmoseWashInserted = true
       }
-
-      if (osmoseWashInserted) {
-        osmosisCount = 0
-      }
+      if (osmoseWashInserted) osmosisCount = 0
 
       const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
-      const osmoseDuration = computeOsmoseTime(tlsItem.rawVolume, tlsItemCi, cmd.targetValue)
+      const osmoseDuration = computeOsmoseTime(actualDrawn, ci, targetVal)
       const osmoseEnd = osmoseStart + osmoseDuration
       timeOsmosisFree = osmoseEnd
       osmosisCount++
-
-      if (cmdOsmoseStart[tlsItem.commandId] === undefined) {
-        cmdOsmoseStart[tlsItem.commandId] = osmoseStart
-      } else {
-        cmdOsmoseStart[tlsItem.commandId] = Math.min(cmdOsmoseStart[tlsItem.commandId], osmoseStart)
-      }
-      cmdOsmoseEnd[tlsItem.commandId] = Math.max(cmdOsmoseEnd[tlsItem.commandId] || 0, osmoseEnd)
-
+      
       ganttTasks.push({
-        key: `${tlsItem.commandId}-${TLS_NAME}-osmose`,
-        label: `${tlsItem.commandName} : Osmose ${TLS_NAME}`,
+        key: `osmose-${group.key}-${Date.now()}-${Math.random()}`,
+        label: `Prod Cont. (${group.key}) : Osmose TLS2`,
         startMinute: osmoseStart,
         durationMinutes: osmoseDuration,
-        color: getCommandColor(tlsItem.commandIdx, "osmose"),
+        color: getNextColor("osmose"),
       })
 
-      // 3. Schedule Powdering & Pasteurization
-      const cfTanksToFill: string[] = []
-      const cfFillVolumes: { [cfName: string]: number } = {}
-      let remTLSVol = tlsItem.osmosedVolume
-
-      const preAllocated = commandCFAllocations[tlsItem.commandId]
-      const selectedCFs = commandCFSelectedList[tlsItem.commandId]
-
-      selectedCFs.forEach(cfName => {
-        if (remTLSVol <= 0) return
-        const maxAllocated = preAllocated[cfName] || 0
-        const alreadyFilled = cfTanksFilledForCommand[tlsItem.commandId][cfName] || 0
-        const capRemaining = maxAllocated - alreadyFilled
-        if (capRemaining > 0) {
-          const fill = Math.min(remTLSVol, capRemaining)
-          cfTanksToFill.push(cfName)
-          cfFillVolumes[cfName] = fill
-          remTLSVol = Number((remTLSVol - fill).toFixed(3))
-          cfTanksFilledForCommand[tlsItem.commandId][cfName] = Number((alreadyFilled + fill).toFixed(3))
-        }
-      })
-
-      // Sort cfTanksToFill so we fill the ones that are ready earliest first
-      cfTanksToFill.sort((a, b) => (cfAvailableAt[a] || 0) - (cfAvailableAt[b] || 0))
-
-      const powderDuration = computePowderTime(tlsItem.osmosedVolume)
-      const pastoDuration = computePastoTime(tlsItem.osmosedVolume)
-
-      let requiredPastoStart = Math.max(
-        osmoseEnd + powderDuration,
-        Math.max(timePastoFree, timePowderFree + powderDuration)
-      )
-
-      let cumDuration = 0
-      cfTanksToFill.forEach((cfName) => {
-        const fillVol = cfFillVolumes[cfName]
-        const fillDuration = (fillVol / 5000) * 60
-        const tankReady = cfAvailableAt[cfName] || 0
-
-        requiredPastoStart = Math.max(requiredPastoStart, tankReady - cumDuration)
-        cumDuration += fillDuration
-      })
-
-      if (pastoCount >= 3) {
-        const washStart = Math.max(requiredPastoStart, timeWashLine2Free)
+      const powderDuration = computePowderTime(chunkMass)
+      const pastoDuration = computePastoTime(chunkMass)
+      
+      // Pasto Wash Check
+      let pastoWashInserted = false
+      const waitPasto = Math.max(osmoseEnd + powderDuration, timePastoFree) - timePastoFree
+      if (timePastoFree > 0 && waitPasto >= 60) {
+        const washStart = Math.max(timePastoFree, timeWashLine2Free)
         ganttTasks.push({
-          key: `pasto-wash-${tlsItem.commandId}-${TLS_NAME}`,
+          key: `pasto-wash-${group.key}-court-${Math.random()}`,
           label: `Lavage C4 (Pasteurisateur COURT)`,
           startMinute: washStart,
-          durationMinutes: 120,
+          durationMinutes: 90,
           color: "#cbd5e1",
         })
-        requiredPastoStart = washStart + 120
-        timeWashLine2Free = requiredPastoStart
-        pastoCount = 0
+        timeWashLine2Free = washStart + 90
+        timePastoFree = Math.max(timePastoFree, timeWashLine2Free)
+        pastoWashInserted = true
+      } else if (pastoCount >= 3) {
+        const washStart = Math.max(osmoseEnd + powderDuration, timePastoFree, timeWashLine2Free)
+        ganttTasks.push({
+          key: `pasto-wash-${group.key}-long-${Math.random()}`,
+          label: `Lavage C4 (Pasteurisateur LONG)`,
+          startMinute: washStart,
+          durationMinutes: 150,
+          color: "#cbd5e1",
+        })
+        timeWashLine2Free = washStart + 150
+        timePastoFree = Math.max(timePastoFree, timeWashLine2Free)
+        pastoWashInserted = true
       }
+      if (pastoWashInserted) pastoCount = 0
+
+      let requiredPastoStart = Math.max(osmoseEnd + powderDuration, timePastoFree)
 
       const pastoStart = requiredPastoStart
-      const powderStart = pastoStart - powderDuration
       const pastoEnd = pastoStart + pastoDuration
-
-      timePowderFree = pastoStart
       timePastoFree = pastoEnd
+      timePowderFree = pastoStart - powderDuration
       pastoCount++
-
-      // Lavage du TLS après la pasteurisation (le TLS est alors vide)
-      const tlsWashStart = Math.max(pastoEnd, timeWashLine1Free)
-      const tlsWashDuration = 40 // LONG
-      const tlsWashEnd = tlsWashStart + tlsWashDuration
-      tlsAvailableAt[TLS_NAME] = tlsWashEnd
-      timeWashLine1Free = tlsWashEnd
-
+      
       ganttTasks.push({
-        key: `tls-wash-${tlsItem.commandId}-${TLS_NAME}`,
-        label: `Lavage ${TLS_NAME}`,
-        startMinute: tlsWashStart,
-        durationMinutes: tlsWashDuration,
-        color: "#cbd5e1",
-      })
-
-      if (cmdPastoStart[tlsItem.commandId] === undefined) {
-        cmdPastoStart[tlsItem.commandId] = powderStart
-      } else {
-        cmdPastoStart[tlsItem.commandId] = Math.min(cmdPastoStart[tlsItem.commandId], powderStart)
-      }
-      cmdPastoEnd[tlsItem.commandId] = Math.max(cmdPastoEnd[tlsItem.commandId] || 0, pastoEnd)
-
-      ganttTasks.push({
-        key: `${tlsItem.commandId}-${TLS_NAME}-pasto`,
-        label: `${tlsItem.commandName} : Poudrage + Pasto ${TLS_NAME}`,
-        startMinute: powderStart,
+        key: `pasto-${group.key}-${Date.now()}-${Math.random()}`,
+        label: `Prod Cont. (${group.key}) : Poudrage + Pasto`,
+        startMinute: timePowderFree,
         durationMinutes: powderDuration + pastoDuration,
-        color: getCommandColor(tlsItem.commandIdx, "pasto"),
+        color: getNextColor("pasto"),
       })
 
-      // 4. Schedule Maturation: tanks fill and mature sequentially as they are filled
-      let currentFillTime = pastoStart
-      cfTanksToFill.forEach((cfName) => {
-        const fillVol = cfFillVolumes[cfName]
-        const fillDuration = (fillVol / 5000) * 60
-        const maturationStart = currentFillTime + fillDuration
-        currentFillTime = maturationStart
-
+      let remToFill = chunkMass
+      while (remToFill > 0) {
+        const availableCFs = CF_TANKS.filter(t => group.isSkyr ? t.name === "CF20" : t.name !== "CF20")
+        availableCFs.sort((a, b) => (cfAvailableAt[a.name] || 0) - (cfAvailableAt[b.name] || 0))
+        const cfTank = availableCFs[0]
+        
+        const fillAmount = Math.min(remToFill, cfTank.capacity)
+        remToFill -= fillAmount
+        
+        const fillStart = Math.max(pastoEnd, cfAvailableAt[cfTank.name])
+        const fillDuration = (fillAmount / 5000) * 60
+        const maturationStart = fillStart + fillDuration
+        const maturationEnd = maturationStart + 360
+        
+        // Sequentially estimate empty time for this chunk
+        const chunkEmptyDuration = (fillAmount / group.whiteMassKg) * totalGroupEmptyMinutes
+        const emptyStart = Math.max(maturationEnd, groupPackagingAvailableAt)
+        const emptyEnd = emptyStart + chunkEmptyDuration
+        groupPackagingAvailableAt = emptyEnd
+        
+        const estimatedWashDuration = (cfTank.name === "CF20") ? 110 : 20 // 20m wash + 90m soutirage
+        cfAvailableAt[cfTank.name] = emptyEnd + estimatedWashDuration
+        
         ganttTasks.push({
-          key: `${tlsItem.commandId}-${cfName}-maturation`,
-          label: `${tlsItem.commandName} : Maturation ${cfName} (${fillVol.toFixed(0)}L)`,
+          key: `maturation-${cfTank.name}-${Date.now()}-${Math.random()}`,
+          label: `Maturation ${cfTank.name} (${group.key})`,
           startMinute: maturationStart,
           durationMinutes: 360,
-          color: getCommandColor(tlsItem.commandIdx, "maturation"),
+          color: getNextColor("maturation"),
         })
 
-        maturationEndAt[cfName] = maturationStart + 360
-        if (!commandTankMaturationEnd[tlsItem.commandId]) {
-          commandTankMaturationEnd[tlsItem.commandId] = {}
-        }
-        commandTankMaturationEnd[tlsItem.commandId][cfName] = maturationStart + 360
-      })
-
-      if (cmdMinStart[tlsItem.commandId] === undefined) {
-        cmdMinStart[tlsItem.commandId] = transferStart
-      } else {
-        cmdMinStart[tlsItem.commandId] = Math.min(cmdMinStart[tlsItem.commandId], transferStart)
+        readyTanks[group.key].push({ cfName: cfTank.name, readyTime: maturationEnd, volume: fillAmount })
       }
     }
-    }) // End of cmdTlsItems.forEach
 
-    // 2. Finalize command results timelines with intermediate states for this command
-    if (cmd.references.length === 0) return // Skip if no references
-
-    const tStart = cmdMinStart[cmd.id] || 0
-
-    // Earliest maturation end of the selected CF tanks determines when packaging starts!
-    const selectedCFs = commandCFSelectedList[cmd.id] || []
-
-    const sortedCFs = [...selectedCFs].sort((a, b) => (commandTankMaturationEnd[cmd.id]?.[a] || 0) - (commandTankMaturationEnd[cmd.id]?.[b] || 0))
-    const firstTankName = sortedCFs.length > 0 ? sortedCFs[0] : undefined
-    const firstTankMaturationEnd = firstTankName ? commandTankMaturationEnd[cmd.id]?.[firstTankName] : undefined
-
-    const maturationEnds = selectedCFs.map(cf => commandTankMaturationEnd[cmd.id]?.[cf] || 0).filter(t => t > 0)
-    const tEndMaturation = maturationEnds.length > 0 ? Math.min(...maturationEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
-
-    const hasSkyr = cmd.references.some(r => r.name.toLowerCase().includes("skyr"))
-    const hasClassic = cmd.references.some(r => !r.name.toLowerCase().includes("skyr"))
-    const isDirectSkyr = hasSkyr && cmd.skyrMilkType === "fcv3" && cmd.skyrDirectPasto
-
-    commandsResults[cmd.id] = {
-      id: cmd.id,
-      name: cmd.name,
-      transferStart: tStart,
-      transferEnd: cmdTransEnd[cmd.id] || 0,
-      osmoseStart: cmdOsmoseStart[cmd.id] || 0,
-      osmoseEnd: cmdOsmoseEnd[cmd.id] || 0,
-      powderStart: isDirectSkyr && !hasClassic ? (cmdOsmoseEnd[cmd.id] || 0) : (cmdOsmoseEnd[cmd.id] || 0),
-      powderEnd: isDirectSkyr && !hasClassic ? (cmdPastoStart[cmd.id] || 0) : (cmdPastoStart[cmd.id] || 0),
-      pastoStart: cmdPastoStart[cmd.id] || 0,
-      pastoEnd: cmdPastoEnd[cmd.id] || 0,
-      maturationStart: cmdPastoEnd[cmd.id] || 0,
-      maturationEnd: tEndMaturation,
-      packagingStart: tEndMaturation,
-      packagingEnd: tEndMaturation,
-      packagingAtiaDuration: 0,
-      packagingGrunDuration: 0,
-      totalDuration: tEndMaturation,
-      firstTankName,
-      firstTankMaturationEnd,
-    }
-
-    // 3. Schedule Reference Packaging sequentially for this command after maturation is complete
-    const cmdRes = commandsResults[cmd.id]
-    if (!cmdRes) return
-
-    const refResults: { refId: string; name: string; start: number; end: number }[] = []
-    const cfMaxEnd: Record<string, number> = {}
-
-    const classicCFs = (commandCFSelectedList[cmd.id] || []).filter(cf => cf !== "CF20")
-    classicCFs.sort((a, b) => (commandTankMaturationEnd[cmd.id]?.[a] || 0) - (commandTankMaturationEnd[cmd.id]?.[b] || 0))
-    const classicCFVolumes = classicCFs.map(cf => ({ cf, vol: cfTanksFilledForCommand[cmd.id]?.[cf] || 0 }))
-
-    cmd.references.forEach((ref) => {
+    // Now immediately empty the tanks for this group
+    const tanks = readyTanks[group.key].sort((a, b) => a.readyTime - b.readyTime)
+    
+    group.refs.forEach(({cmd, ref}) => {
+      let refVol = (ref.potsQty * ref.gramPerPot) / 1000
       const dest = cmd.refDestinations?.[ref.id] || "both"
       const customPots = cmd.refPotsLaunched?.[ref.id]
       const potsDefault = ref.potsQty
 
       let potsAtia = 0
       let potsGrun = 0
-
       if (dest === "atia") {
         potsAtia = customPots?.atia !== undefined ? customPots.atia : potsDefault
       } else if (dest === "grunwald") {
         potsGrun = customPots?.grunwald !== undefined ? customPots.grunwald : potsDefault
-      } else { // both
+      } else {
         potsAtia = customPots?.atia !== undefined ? customPots.atia : potsDefault * (3500 / 13500)
         potsGrun = customPots?.grunwald !== undefined ? customPots.grunwald : potsDefault * (10000 / 13500)
       }
-
-      // Compute maturation end specifically for this reference!
-      const isRefSkyr = ref.name.toLowerCase().includes("skyr")
-      let refMaturationEnd = 0
-      if (isRefSkyr) {
-        refMaturationEnd = commandTankMaturationEnd[cmd.id]?.["CF20"] || 0
-      } else {
-        const classicCFs = (commandCFSelectedList[cmd.id] || []).filter(cf => cf !== "CF20")
-        const classicEnds = classicCFs.map(cf => commandTankMaturationEnd[cmd.id]?.[cf] || 0).filter(t => t > 0)
-        refMaturationEnd = classicEnds.length > 0 ? Math.min(...classicEnds) : (cmdPastoEnd[cmd.id] || 0) + 360
-      }
-
-      // --- 48h Wash Logic Check ---
-      const expectedAtiaDuration = dest === "atia" || dest === "both" ? (potsAtia / 3500) * 60 : 0
-      const expectedGrunDuration = dest === "grunwald" || dest === "both" ? (potsGrun / 10000) * 60 : 0
       
-      const expectedAtiaStart = Math.max(refMaturationEnd, timeAtia)
-      const expectedGrunStart = Math.max(refMaturationEnd, timeGrunwald)
+      let refStart = 999999
+      let refEnd = 0
       
-      const expectedPkgStart = dest === "both" ? Math.min(expectedAtiaStart, expectedGrunStart) : (dest === "atia" ? expectedAtiaStart : expectedGrunStart)
-      const expectedPkgEnd = Math.max(
-         dest === "atia" || dest === "both" ? expectedAtiaStart + expectedAtiaDuration : 0,
-         dest === "grunwald" || dest === "both" ? expectedGrunStart + expectedGrunDuration : 0
-      )
+      while (refVol > 0 && tanks.length > 0) {
+        const t = tanks[0]
+        if (t.volume <= 0) {
+          tanks.shift()
+          continue
+        }
+        
+        const take = Math.min(refVol, t.volume)
+        t.volume -= take
+        refVol -= take
+        
+        const takeRatio = (potsAtia + potsGrun) > 0 ? take / ((potsAtia + potsGrun) * ref.gramPerPot / 1000) : 0
+        const takePotsAtia = potsAtia * takeRatio
+        const takePotsGrun = potsGrun * takeRatio
+        
+        let chunkStart = 0
+        let chunkEnd = 0
 
-      const timeSinceLastWash = expectedPkgEnd - last48hWashEnd
-      const maxLimit = 52 * 60 // 3120
-      const minLimit = 44 * 60 // 2640
+        // Check 48h wash dynamically for this reference chunk
+        const expectedAtiaDuration = dest === "atia" || dest === "both" ? (takePotsAtia / 3500) * 60 : 0
+        const expectedGrunDuration = dest === "grunwald" || dest === "both" ? (takePotsGrun / 10000) * 60 : 0
+        const expectedAtiaStart = Math.max(t.readyTime, timeAtia)
+        const expectedGrunStart = Math.max(t.readyTime, timeGrunwald)
+        
+        const expectedPkgStart = dest === "both" ? Math.min(expectedAtiaStart, expectedGrunStart) : (dest === "atia" ? expectedAtiaStart : expectedGrunStart)
+        const expectedPkgEnd = Math.max(
+           dest === "atia" || dest === "both" ? expectedAtiaStart + expectedAtiaDuration : 0,
+           dest === "grunwald" || dest === "both" ? expectedGrunStart + expectedGrunDuration : 0
+        )
 
-      if (timeSinceLastWash > maxLimit || (expectedPkgStart - last48hWashEnd >= minLimit)) {
-         let c5Start = Math.max(timeAtia, timeGrunwald, timeSoutirageWashFree)
-         ganttTasks.push({
-           key: `wash-c5-dyn-${cmd.id}-${ref.id}`,
-           label: `Lavage 48H: C5 (Pré-Cond.)`,
-           startMinute: c5Start,
-           durationMinutes: 90,
-           color: "#94a3b8",
-         })
-         let c5End = c5Start + 90
-         timeSoutirageWashFree = c5End
-         
-         let atiaStart = c5End
-         ganttTasks.push({
-           key: `wash-atia-dyn-${cmd.id}-${ref.id}`,
-           label: `Lavage 48H: ATIA`,
-           startMinute: atiaStart,
-           durationMinutes: 50,
-           color: "#94a3b8",
-         })
-         
-         let grunStart = c5End
-         ganttTasks.push({
-           key: `wash-grun-dyn-${cmd.id}-${ref.id}`,
-           label: `Lavage 48H: Grunwald`,
-           startMinute: grunStart,
-           durationMinutes: 110,
-           color: "#94a3b8",
-         })
-         
-         timeAtia = atiaStart + 50
-         timeGrunwald = grunStart + 110
-         last48hWashEnd = Math.max(timeAtia, timeGrunwald)
-      }
-      // ----------------------------
+        const timeSinceLastWash = expectedPkgEnd - last48hWashEnd
+        const maxLimit = 52 * 60 
+        const minLimit = 44 * 60 
 
-      let refStart = -1
-      let refEnd = -1
-
-      if (isRefSkyr) {
-        const tankReady = commandTankMaturationEnd[cmd.id]?.["CF20"] || 0
-        let pkgStart = 0
-        let emptyTime = 0
+        if (timeSinceLastWash > maxLimit || (expectedPkgStart - last48hWashEnd >= minLimit)) {
+           let c5Start = Math.max(timeAtia, timeGrunwald, timeSoutirageWashFree)
+           ganttTasks.push({
+             key: `wash-c5-dyn-${cmd.id}-${ref.id}-${Math.random()}`,
+             label: `Lavage 48H: C5 (Pré-Cond.)`,
+             startMinute: c5Start,
+             durationMinutes: 90,
+             color: "#94a3b8",
+           })
+           let c5End = c5Start + 90
+           timeSoutirageWashFree = c5End
+           
+           let atiaStart = c5End
+           ganttTasks.push({
+             key: `wash-atia-dyn-${cmd.id}-${ref.id}-${Math.random()}`,
+             label: `Lavage 48H: ATIA`,
+             startMinute: atiaStart,
+             durationMinutes: 50,
+             color: "#94a3b8",
+           })
+           
+           let grunStart = c5End
+           ganttTasks.push({
+             key: `wash-grun-dyn-${cmd.id}-${ref.id}-${Math.random()}`,
+             label: `Lavage 48H: Grunwald`,
+             startMinute: grunStart,
+             durationMinutes: 110,
+             color: "#94a3b8",
+           })
+           
+           timeAtia = atiaStart + 50
+           timeGrunwald = grunStart + 110
+           last48hWashEnd = Math.max(timeAtia, timeGrunwald)
+        }
 
         if (dest === "grunwald") {
-          pkgStart = Math.max(tankReady, timeGrunwald)
-          const pkgDuration = (potsGrun / 10000) * 60
-          emptyTime = pkgStart + pkgDuration
-          timeGrunwald = emptyTime
-
+          chunkStart = Math.max(t.readyTime, timeGrunwald)
+          const duration = (takePotsGrun / 10000) * 60
+          chunkEnd = chunkStart + duration
+          timeGrunwald = chunkEnd
+          
           ganttTasks.push({
-            key: `${cmd.id}-${ref.id}-pkg-grun`,
-            label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
-            startMinute: pkgStart,
-            durationMinutes: pkgDuration,
-            color: getCommandColor(cmdIdx, "packaging_grun"),
+            key: `pkg-grun-${cmd.id}-${ref.id}-${Math.random()}`,
+            label: `Cond. ${ref.name} (GRUN)`,
+            startMinute: chunkStart,
+            durationMinutes: duration,
+            color: "hsl(200, 90%, 55%)",
           })
         } else if (dest === "atia") {
-          pkgStart = Math.max(tankReady, timeAtia)
-          const pkgDuration = (potsAtia / 3500) * 60
-          emptyTime = pkgStart + pkgDuration
-          timeAtia = emptyTime
-
+          chunkStart = Math.max(t.readyTime, timeAtia)
+          const duration = (takePotsAtia / 3500) * 60
+          chunkEnd = chunkStart + duration
+          timeAtia = chunkEnd
+          
           ganttTasks.push({
-            key: `${cmd.id}-${ref.id}-pkg-atia`,
-            label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
-            startMinute: pkgStart,
-            durationMinutes: pkgDuration,
-            color: getCommandColor(cmdIdx, "packaging_atia"),
+            key: `pkg-atia-${cmd.id}-${ref.id}-${Math.random()}`,
+            label: `Cond. ${ref.name} (ATIA)`,
+            startMinute: chunkStart,
+            durationMinutes: duration,
+            color: "hsl(220, 90%, 65%)",
           })
-        } else { // both
-          const atiaStart = Math.max(tankReady, timeAtia)
-          const grunStart = Math.max(tankReady, timeGrunwald)
-
-          const atiaDuration = (potsAtia / 3500) * 60
-          const grunDuration = (potsGrun / 10000) * 60
-
-          const atiaEnd = atiaStart + atiaDuration
-          const grunEnd = grunStart + grunDuration
-
-          pkgStart = Math.min(atiaStart, grunStart)
-          emptyTime = Math.max(atiaEnd, grunEnd)
+        } else {
+          const startAtia = Math.max(t.readyTime, timeAtia)
+          const startGrun = Math.max(t.readyTime, timeGrunwald)
+          const atiaDuration = (takePotsAtia / 3500) * 60
+          const grunDuration = (takePotsGrun / 10000) * 60
+          chunkStart = Math.min(startAtia, startGrun)
           
-          timeAtia = atiaEnd
-          timeGrunwald = grunEnd
-
-          ganttTasks.push({
-            key: `${cmd.id}-${ref.id}-pkg-both`,
-            label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
-            startMinute: pkgStart,
-            durationMinutes: emptyTime - pkgStart,
-            color: getCommandColor(cmdIdx, "packaging_grun"),
-          })
-        }
-
-        refStart = pkgStart
-        refEnd = emptyTime
-
-        cfMaxEnd["CF20"] = Math.max(cfMaxEnd["CF20"] || 0, emptyTime)
-        ganttTasks.push({
-          key: `${cmd.id}-${ref.id}-CF20-empty`,
-          label: `${cmd.name} : Vidage CF20`,
-          startMinute: pkgStart,
-          durationMinutes: emptyTime - pkgStart,
-          color: "hsl(180, 50%, 45%)",
-        })
-      } else {
-        let refVol = (potsAtia + potsGrun) * ref.gramPerPot / 1000
-        const totalPots = potsAtia + potsGrun
-
-        for (let i = 0; i < classicCFVolumes.length; i++) {
-          if (classicCFVolumes[i].vol <= 0) continue
-          if (refVol <= 0) break
-
-          const take = Math.min(classicCFVolumes[i].vol, refVol)
-          classicCFVolumes[i].vol -= take
-          refVol -= take
-
-          const tankReady = commandTankMaturationEnd[cmd.id]?.[classicCFVolumes[i].cf] || 0
+          const endAtia = startAtia + atiaDuration
+          const endGrun = startGrun + grunDuration
+          chunkEnd = Math.max(endAtia, endGrun)
           
-          const takeRatio = totalPots > 0 ? take / (totalPots * ref.gramPerPot / 1000) : 0
-          const takePotsAtia = potsAtia * takeRatio
-          const takePotsGrun = potsGrun * takeRatio
-
-          let chunkStart = 0
-          let chunkEnd = 0
-
-          if (dest === "grunwald") {
-            chunkStart = Math.max(tankReady, timeGrunwald)
-            const duration = (takePotsGrun / 10000) * 60
-            chunkEnd = chunkStart + duration
-            timeGrunwald = chunkEnd
-
-            ganttTasks.push({
-              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-grun`,
-              label: `${cmd.name} : Cond. ${ref.name} (GRUN)`,
-              startMinute: chunkStart,
-              durationMinutes: duration,
-              color: getCommandColor(cmdIdx, "packaging_grun"),
-            })
-          } else if (dest === "atia") {
-            chunkStart = Math.max(tankReady, timeAtia)
-            const duration = (takePotsAtia / 3500) * 60
-            chunkEnd = chunkStart + duration
-            timeAtia = chunkEnd
-
-            ganttTasks.push({
-              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-atia`,
-              label: `${cmd.name} : Cond. ${ref.name} (ATIA)`,
-              startMinute: chunkStart,
-              durationMinutes: duration,
-              color: getCommandColor(cmdIdx, "packaging_atia"),
-            })
-          } else {
-            const startAtia = Math.max(tankReady, timeAtia)
-            const startGrun = Math.max(tankReady, timeGrunwald)
-            
-            const atiaDuration = (takePotsAtia / 3500) * 60
-            const grunDuration = (takePotsGrun / 10000) * 60
-            
-            chunkStart = Math.min(startAtia, startGrun)
-            
-            const endAtia = startAtia + atiaDuration
-            const endGrun = startGrun + grunDuration
-            chunkEnd = Math.max(endAtia, endGrun)
-            
-            timeAtia = endAtia
-            timeGrunwald = endGrun
-            
-            ganttTasks.push({
-              key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-pkg-both`,
-              label: `${cmd.name} : Cond. ${ref.name} (ATIA+GRUN)`,
-              startMinute: chunkStart,
-              durationMinutes: chunkEnd - chunkStart,
-              color: getCommandColor(cmdIdx, "packaging_grun"),
-            })
-          }
-
-          cfMaxEnd[classicCFVolumes[i].cf] = chunkEnd
+          timeAtia = endAtia
+          timeGrunwald = endGrun
           
           ganttTasks.push({
-            key: `${cmd.id}-${ref.id}-${classicCFVolumes[i].cf}-empty`,
-            label: `${cmd.name} : Vidage ${classicCFVolumes[i].cf}`,
+            key: `pkg-both-${cmd.id}-${ref.id}-${Math.random()}`,
+            label: `Cond. ${ref.name} (ATIA+GRUN)`,
             startMinute: chunkStart,
             durationMinutes: chunkEnd - chunkStart,
-            color: "hsl(180, 50%, 45%)",
+            color: "hsl(200, 90%, 55%)",
           })
+        }
+        
+        ganttTasks.push({
+          key: `empty-${t.cfName}-${Math.random()}`,
+          label: `Vidage ${t.cfName}`,
+          startMinute: chunkStart,
+          durationMinutes: chunkEnd - chunkStart,
+          color: "hsl(180, 50%, 45%)",
+        })
 
-          if (refStart === -1) refStart = chunkStart
-          refEnd = chunkEnd
+        cfEmptyTimes[t.cfName] = Math.max(cfEmptyTimes[t.cfName] || 0, chunkEnd)
+
+        refStart = Math.min(refStart, chunkStart)
+        refEnd = Math.max(refEnd, chunkEnd)
+
+        if (t.volume <= 0.001) {
+          let washStart = 0
+          if (t.cfName === "CF20") {
+            washStart = chunkEnd // Lavage direct après vidage
+            const washEnd = washStart + 20 
+            ganttTasks.push({
+              key: `${t.cfName}-wash-${Math.random()}`,
+              label: `Lavage ${t.cfName}`,
+              startMinute: washStart,
+              durationMinutes: 20,
+              color: "#cbd5e1",
+            })
+            cfAvailableAt[t.cfName] = washEnd
+            
+            // Le lavage CF20 n'occupe plus la ligne de lavage principale pour ne pas bloquer
+            // ou être bloqué.
+
+            const soutirageCF20Start = Math.max(washEnd, timeSoutirageWashFree)
+            ganttTasks.push({
+              key: `wash-soutirage-cf20-${Math.random()}`,
+              label: `Lavage Ligne Soutirage CF20`,
+              startMinute: soutirageCF20Start,
+              durationMinutes: 90,
+              color: "#94a3b8",
+            })
+            const soutirageEnd = soutirageCF20Start + 90
+            timeSoutirageWashFree = soutirageEnd
+            cfEmptyTimes[t.cfName] = soutirageEnd
+          } else {
+            washStart = chunkEnd // Lavage direct après vidage
+            const washEnd = washStart + 20
+            ganttTasks.push({
+              key: `${t.cfName}-wash-${Math.random()}`,
+              label: `Lavage ${t.cfName}`,
+              startMinute: washStart,
+              durationMinutes: 20,
+              color: "#cbd5e1",
+            })
+            cfAvailableAt[t.cfName] = washEnd
+            cfEmptyTimes[t.cfName] = washEnd
+          }
         }
       }
-
-      refResults.push({
-        refId: ref.id,
-        name: ref.name,
-        start: refStart,
-        end: refEnd
-      })
-
-      if (cmdMaxEnd[cmd.id] === undefined || refEnd > cmdMaxEnd[cmd.id]) {
-        cmdMaxEnd[cmd.id] = refEnd
-      }
-    })
-
-    cmdRes.referencesResults = refResults
-
-    // Group CF tank washing tasks at the end of reference packaging
-    const cmdPkgEnd = cmdMaxEnd[cmd.id] || cmdRes.maturationEnd
-    cmdRes.packagingEnd = cmdPkgEnd
-    cmdRes.totalDuration = cmdPkgEnd
-
-    if (cmdRes.firstTankName) {
-      cmdRes.firstTankEmptyEnd = cfMaxEnd[cmdRes.firstTankName] || commandTankMaturationEnd[cmd.id]?.[cmdRes.firstTankName] || cmdRes.maturationEnd
-    }
-
-    const washSelectedCFs = commandCFSelectedList[cmd.id]
-    
-    // Sort CFs by empty time to wash them in order
-    const cfsToWash = [...washSelectedCFs].sort((a, b) => {
-      const emptyA = cfMaxEnd[a] || commandTankMaturationEnd[cmd.id]?.[a] || cmdRes.maturationEnd
-      const emptyB = cfMaxEnd[b] || commandTankMaturationEnd[cmd.id]?.[b] || cmdRes.maturationEnd
-      return emptyA - emptyB
-    })
-
-    cfsToWash.forEach(cfName => {
-      const emptyTime = cfMaxEnd[cfName] || commandTankMaturationEnd[cmd.id]?.[cfName] || cmdRes.maturationEnd
       
-      let washStart = 0
-      if (cfName === "CF20") {
-        washStart = Math.max(emptyTime, timeWashLine1Free)
-        const washEnd = washStart + 20 // COURT
-        ganttTasks.push({
-          key: `${cmd.id}-${cfName}-wash`,
-          label: `${cmd.name} : Lavage ${cfName}`,
-          startMinute: washStart,
-          durationMinutes: 20,
-          color: "#cbd5e1",
-        })
-        cfAvailableAt[cfName] = washEnd
-        timeWashLine1Free = washEnd
-
-        // Lavage de la ligne de soutirage CF20 dès que possible
-        const soutirageCF20Start = Math.max(timeWashLine1Free, timeSoutirageWashFree)
-        ganttTasks.push({
-          key: `wash-soutirage-cf20-${cmd.id}`,
-          label: `Lavage Ligne Soutirage CF20`,
-          startMinute: soutirageCF20Start,
-          durationMinutes: 90,
-          color: "#94a3b8",
-        })
-        const soutirageEnd = soutirageCF20Start + 90
-        timeSoutirageWashFree = soutirageEnd
-        timeWashLine1Free = soutirageEnd
-      } else {
-        washStart = Math.max(emptyTime, timeWashLine2Free)
-        const washEnd = washStart + 20 // COURT
-        ganttTasks.push({
-          key: `${cmd.id}-${cfName}-wash`,
-          label: `${cmd.name} : Lavage ${cfName}`,
-          startMinute: washStart,
-          durationMinutes: 20,
-          color: "#cbd5e1",
-        })
-        cfAvailableAt[cfName] = washEnd
-        timeWashLine2Free = washEnd
-      }
+      const res = commandsResults[cmd.id]
+      if (!res.referencesResults) res.referencesResults = []
+      res.referencesResults.push({ refId: ref.id, name: ref.name, start: refStart, end: refEnd })
+      
+      res.packagingStart = Math.min(res.packagingStart, refStart)
+      res.packagingEnd = Math.max(res.packagingEnd, refEnd)
+      res.totalDuration = Math.max(res.totalDuration, refEnd)
     })
-  }) // End of main commands.forEach loop
+    colorIdx++
+  })
 
-  // Lavage TLC et TLP dès que les transferts sont terminés
-  const maxTransEnd = Math.max(0, ...Object.values(cmdTransEnd))
-  if (maxTransEnd > 0) {
-    const tlcWashStart = Math.max(maxTransEnd, timeWashLine1Free)
-    ganttTasks.push({
-      key: `wash-tlc`,
-      label: `Lavages TLC & TLP (Vides)`,
-      startMinute: tlcWashStart,
-      durationMinutes: 50, // LONG
-      color: "#94a3b8",
-    })
-    timeWashLine1Free = tlcWashStart + 50
-  }
+  // Final Wash Lines
+  let endWashTimeLine1 = Math.max(timeGrunwald, timeAtia, timePastoFree, ...Object.values(cfAvailableAt), ...Object.values(tlsAvailableAt))
+  let endWashTimeLine2 = endWashTimeLine1
 
-  let totalDurationMinutes = Math.max(
-    timeGrunwald,
-    timeAtia,
-    timePastoFree,
-    ...Object.values(cfAvailableAt),
-    ...Object.values(tlsAvailableAt)
-  )
-
-  // 8. Lavages de fin de cycle (C5, ATIA, Grunwald, C3, C2, TLC, C4)
-  let endWashTimeLine1 = totalDurationMinutes
-  let endWashTimeLine2 = totalDurationMinutes
+  const tlcWashStart = Math.max(endWashTimeLine1, timeWashLine1Free)
+  ganttTasks.push({
+    key: `wash-tlc`,
+    label: `Lavages TLC & TLP (Vides)`,
+    startMinute: tlcWashStart,
+    durationMinutes: 50,
+    color: "#94a3b8",
+  })
+  endWashTimeLine1 = tlcWashStart + 50
 
   if (config?.needs48hWash) {
     const c5Start = Math.max(endWashTimeLine2, timeSoutirageWashFree)
@@ -1724,15 +1296,12 @@ export const runMultiCommandSimulation = (
       key: `wash-c5`,
       label: `Lavage C5 (Ligne de soutirage)`,
       startMinute: c5Start,
-      durationMinutes: 90, // LONG
+      durationMinutes: 90,
       color: "#94a3b8",
     })
     const c5End = c5Start + 90
     timeSoutirageWashFree = c5End
     endWashTimeLine2 = c5End
-
-    const aFaitCF20 = commands.some(c => commandCFSelectedList[c.id]?.includes("CF20"))
-    // Le lavage de la ligne de soutirage CF20 a été déplacé juste après le lavage de la CF20
 
     const atiaStart = endWashTimeLine1
     ganttTasks.push({
@@ -1756,177 +1325,74 @@ export const runMultiCommandSimulation = (
   }
 
   if (config?.needsC3Wash) {
-    let c3WashStart = Math.max(1320, endWashTimeLine1) // 1320 = 22h00
+    let c3WashStart = Math.max(1320, endWashTimeLine1) 
     ganttTasks.push({
       key: `wash-c3`,
       label: `Lavage C3 (Poudrage/Osmose/Pasto)`,
       startMinute: c3WashStart,
-      durationMinutes: 60, // LONG
+      durationMinutes: 60,
       color: "#94a3b8",
     })
     endWashTimeLine1 = c3WashStart + 60
   }
 
-  // Lavage C2 en fin de journée
   ganttTasks.push({
     key: `wash-c2`,
     label: `Lavage C2 (Circuit Réception)`,
     startMinute: endWashTimeLine1,
-    durationMinutes: 70, // LONG 1h10
+    durationMinutes: 70,
     color: "#94a3b8",
   })
   endWashTimeLine1 += 70
   
-  // Lavage C4 en fin de journée
   ganttTasks.push({
     key: `wash-c4`,
     label: `Lavage C4 (Pasto & Envoi)`,
     startMinute: endWashTimeLine2,
-    durationMinutes: 120, // LONG
+    durationMinutes: 120,
     color: "#94a3b8",
   })
   endWashTimeLine2 += 120
 
-  totalDurationMinutes = Math.max(endWashTimeLine1, endWashTimeLine2)
-
-  // Post-process ganttTasks into exactly 6 global grouped rows (Transfer, Osmosis, Pasteurization, Maturation, Packaging, Washing)
   const finalGanttTasks: GanttTask[] = []
-
-  const createGroupedRow = (
-    key: string,
-    label: string,
-    filterFn: (t: GanttTask) => boolean,
-    shortLabelFn: (t: GanttTask) => string,
-    defaultColor: string
-  ) => {
+  const createGroupedRow = (key: string, label: string, filterFn: (t: GanttTask) => boolean, shortLabelFn: (t: GanttTask) => string, defaultColor: string) => {
     const matchingTasks = ganttTasks.filter(filterFn)
     if (matchingTasks.length === 0) return
-
     const segments = matchingTasks.map(t => ({
       startMinute: t.startMinute,
       durationMinutes: t.durationMinutes,
       color: t.color,
       label: t.label,
       shortLabel: shortLabelFn(t),
-    }))
-
-    // Sort segments chronologically
-    segments.sort((a, b) => a.startMinute - b.startMinute)
-
+    })).sort((a, b) => a.startMinute - b.startMinute)
+    
     const startMin = Math.min(...matchingTasks.map(t => t.startMinute))
     const endMax = Math.max(...matchingTasks.map(t => t.startMinute + t.durationMinutes))
-
+    
     finalGanttTasks.push({
-      key,
-      label,
-      startMinute: startMin,
-      durationMinutes: endMax - startMin,
-      color: defaultColor,
-      segments,
+      key, label, startMinute: startMin, durationMinutes: endMax - startMin, color: defaultColor, segments
     })
   }
 
-  // 1. Transfert
-  createGroupedRow(
-    "grouped-transfer",
-    "1. Transfert TLC ➔ TLS / Écrémage",
-    t => t.key.includes("-transfer") || t.key.includes("-skimming") || t.key.includes("direct-transfer"),
-    t => {
-      if (t.key.includes("direct-transfer")) return "Direct (CF20)";
-      if (t.key.includes("-skimming")) return "Écrémage";
-      const match = t.key.match(/TLS[1-3]/);
-      return match ? match[0] : "TLC-TLS";
-    },
-    "hsl(220, 80%, 60%)"
-  )
+  createGroupedRow("grouped-transfer", "1. Transfert TLC ➔ TLS / Écrémage", t => t.label.includes("Transfert"), t => "TLC-TLS", "hsl(220, 80%, 60%)")
+  createGroupedRow("grouped-osmose", "2. Osmose Inverse", t => t.label.includes("Osmose"), t => "Osmose", "hsl(220, 75%, 45%)")
+  createGroupedRow("grouped-pasto", "3. Poudrage & Pasteurisation", t => t.label.includes("Pasto"), t => "Pasto", "hsl(220, 80%, 40%)")
+  createGroupedRow("grouped-maturation", "4. Maturation en Cuves", t => t.label.includes("Maturation"), t => {
+    const match = t.label.match(/CF\d+/); return match ? match[0] : "Maturation";
+  }, "hsl(220, 60%, 50%)")
+  createGroupedRow("grouped-cf-empty", "5. Vidage CF (Début Cond.)", t => t.label.includes("Vidage"), t => {
+    const match = t.label.match(/CF\d+/); return match ? match[0] : "Vidage";
+  }, "hsl(180, 50%, 45%)")
+  createGroupedRow("grouped-cf-wash", "6. Lavage Cuves CF", t => t.label.includes("Lavage") && !!t.label.match(/CF\d+/), t => {
+    const match = t.label.match(/CF\d+/); return match ? match[0] : "Lavage";
+  }, "#cbd5e1")
+  createGroupedRow("grouped-packaging-atia", "7. Conditionnement (Ligne ATIA)", t => t.label.includes("(ATIA)") || t.label.includes("ATIA+GRUN"), t => "ATIA", "hsl(220, 90%, 65%)")
+  createGroupedRow("grouped-packaging-grun", "8. Conditionnement (Ligne GRUNWALD)", t => t.label.includes("(GRUN)") || t.label.includes("ATIA+GRUN"), t => "GRUN", "hsl(200, 90%, 55%)")
+  createGroupedRow("grouped-wash", "9. Lavages (C5, ATIA, C3, C2, Osm, Pasto...)", t => t.label.includes("Lavage") && !t.label.match(/CF\d+/), t => {
+    return t.label.replace("Lavage ", "")
+  }, "#94a3b8")
 
-  // 2. Osmose Inverse
-  createGroupedRow(
-    "grouped-osmose",
-    "2. Osmose Inverse",
-    t => t.key.includes("-osmose"),
-    t => {
-      const match = t.key.match(/TLS[1-3]/);
-      return match ? match[0] : "Osmose";
-    },
-    "hsl(220, 75%, 45%)"
-  )
-
-  // 3. Poudrage & Pasteurisation
-  createGroupedRow(
-    "grouped-pasto",
-    "3. Poudrage & Pasteurisation",
-    t => t.key.includes("-pasto") || t.key.includes("direct-pasto"),
-    t => {
-      if (t.key.includes("direct-pasto")) return "CF20";
-      const match = t.key.match(/TLS[1-3]/);
-      return match ? match[0] : "Pasto";
-    },
-    "hsl(220, 80%, 40%)"
-  )
-
-  // 4. Maturation en Cuves
-  createGroupedRow(
-    "grouped-maturation",
-    "4. Maturation en Cuves",
-    t => t.key.includes("-maturation"),
-    t => {
-      const match = t.key.match(/CF\d+/);
-      return match ? match[0] : "Maturation";
-    },
-    "hsl(220, 60%, 50%)"
-  )
-
-  // 5. Vidage CF (Début Conditionnement CF)
-  createGroupedRow(
-    "grouped-cf-empty",
-    "5. Vidage CF (Début Cond.)",
-    t => t.key.includes("-empty"),
-    t => {
-      const match = t.key.match(/CF\d+/);
-      return match ? match[0] : "Vidage";
-    },
-    "hsl(180, 50%, 45%)"
-  )
-
-  // 6. Conditionnement ATIA
-  createGroupedRow(
-    "grouped-packaging-atia",
-    "6. Conditionnement (Ligne ATIA)",
-    t => t.key.includes("-pkg-atia") || (t.key.includes("-pkg-both") && t.key.endsWith("-atia")), // using -pkg-atia only actually
-    t => {
-      const cmdMatch = t.label.match(/(Commande \d+|Cmd \d+)/i) || t.label.match(/(C\d+)/);
-      return cmdMatch ? cmdMatch[0] : "Cmd";
-    },
-    "hsl(220, 90%, 65%)"
-  )
-
-  // 7. Conditionnement GRUNWALD
-  createGroupedRow(
-    "grouped-packaging-grun",
-    "7. Conditionnement (Ligne GRUNWALD)",
-    t => t.key.includes("-pkg-grun") || (t.key.includes("-pkg-both") && t.key.endsWith("-grun")), // using -pkg-grun only actually
-    t => {
-      const cmdMatch = t.label.match(/(Commande \d+|Cmd \d+)/i) || t.label.match(/(C\d+)/);
-      return cmdMatch ? cmdMatch[0] : "Cmd";
-    },
-    "hsl(200, 90%, 55%)"
-  )
-
-  // 7. Lavages (CF, C5, ATIA, C3, C2, Osm, Pasto...)
-  createGroupedRow(
-    "grouped-wash",
-    "7. Lavages (CF, C5, ATIA, C3, C2, Osm, Pasto...)",
-    t => t.key.includes("-wash") || t.key.includes("wash-"),
-    t => {
-      if (t.key.includes("-wash")) {
-        const match = t.key.match(/CF\d+|TLS[1-3]|osm|pasto/);
-        return match ? match[0] : "Lavage";
-      }
-      return t.label.replace("Lavage ", "");
-    },
-    "#94a3b8"
-  )
+  let totalDurationMinutes = Math.max(endWashTimeLine1, endWashTimeLine2)
 
   return {
     totalDurationMinutes,
@@ -1935,7 +1401,6 @@ export const runMultiCommandSimulation = (
     ganttTasks: finalGanttTasks,
   }
 }
-
 const orderSlice = createSlice({
   name: "order",
   initialState,
