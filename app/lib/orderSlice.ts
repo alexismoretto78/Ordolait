@@ -16,6 +16,23 @@ export type Batch = {
   protein: number // g/L (matière protéique)
   fat: number // g/L (matière grasse)
   milkType: MilkType
+  deliveryDate: number // timestamp
+  temperature?: number
+  snapTest?: boolean
+  ph?: number
+  aciditeDornic?: number
+  litrageBL?: number
+  fcv3Mp?: number
+}
+
+export type MilkOrder = {
+  id: string
+  milkType: MilkType
+  supplier: string
+  scheduledDate: string // YYYY-MM-DDTHH:mm
+  quantity: number // L
+  receivedQuantity?: number // L
+  status: "pending" | "received"
 }
 
 export type ProductReference = {
@@ -29,6 +46,9 @@ export type ProductReference = {
 export type Command = {
   id: string
   name: string
+  startDate?: string // YYYY-MM-DDTHH:mm
+  expectedEndDate?: string // YYYY-MM-DDTHH:mm
+  calculatedEndDate?: number // Timestamp
   references: ProductReference[]
   whiteMassKg: number
   milkReceivedVolume: number
@@ -163,9 +183,11 @@ export type OrderState = {
   commands: Command[]
   activeCommandId: string
   simulationResults?: MultiCommandSimResults
+
+  milkOrders: MilkOrder[]
 }
 
-const initialCommand = (id: string, name: string): Command => {
+const initialCommand = (id: string, name: string, overrides?: Partial<Command>): Command => {
   const selectedCFs = ["CF4", "CF5", "CF1", "CF2", "CF3", "CF11", "CF12", "CF13", "CF14", "CF15"]
   const cfDestinations: { [tankName: string]: "atia" | "grunwald" | "both" } = {}
   const cfSentStatus: { [tankName: string]: { atia: boolean; grunwald: boolean } } = {}
@@ -198,7 +220,10 @@ const initialCommand = (id: string, name: string): Command => {
   return {
     id,
     name,
-    references,
+    startDate: overrides?.startDate || new Date().toISOString().slice(0, 16),
+    expectedEndDate: overrides?.expectedEndDate || "",
+    calculatedEndDate: overrides?.calculatedEndDate || 0,
+    references: overrides?.references || references,
     refDestinations,
     refSentStatus,
     refPotsLaunched,
@@ -220,26 +245,30 @@ const initialCommand = (id: string, name: string): Command => {
     skyrMilkType: "fcv3",
     skyrDirectPasto: false,
     isCFManual: false,
+    ...overrides,
   }
 }
 
-const initialBatches = () => ({
-  tlc1: [
-    { id: "batch-1", lotNumber: "2605291200", volume: 30000, protein: 33, fat: 38, milkType: "bio" as MilkType }
-  ],
-  tlc2: [
-    { id: "batch-2", lotNumber: "2605291300", volume: 30000, protein: 34, fat: 39, milkType: "fcv3" as MilkType }
-  ],
-  tlc3: [
-    { id: "batch-3", lotNumber: "2605291400", volume: 30000, protein: 32, fat: 37, milkType: "savoie" as MilkType }
-  ],
-  tlc4: [
-    { id: "batch-4", lotNumber: "2605291500", volume: 30000, protein: 35, fat: 40, milkType: "montagne" as MilkType }
-  ],
-  tankPermeat: [
-    { id: "batch-5", lotNumber: "2605291600", volume: 15000, protein: 0, fat: 400, milkType: "ecreme_savoie" as MilkType }
-  ]
-})
+const initialBatches = () => {
+  const now = Date.now()
+  return {
+    tlc1: [
+      { id: "batch-1", lotNumber: "2605291200", volume: 30000, protein: 33, fat: 38, milkType: "bio" as MilkType, deliveryDate: now }
+    ],
+    tlc2: [
+      { id: "batch-2", lotNumber: "2605291300", volume: 30000, protein: 34, fat: 39, milkType: "fcv3" as MilkType, deliveryDate: now }
+    ],
+    tlc3: [
+      { id: "batch-3", lotNumber: "2605291400", volume: 30000, protein: 32, fat: 37, milkType: "savoie" as MilkType, deliveryDate: now }
+    ],
+    tlc4: [
+      { id: "batch-4", lotNumber: "2605291500", volume: 30000, protein: 35, fat: 40, milkType: "montagne" as MilkType, deliveryDate: now }
+    ],
+    tankPermeat: [
+      { id: "batch-5", lotNumber: "2605291600", volume: 15000, protein: 0, fat: 400, milkType: "ecreme_savoie" as MilkType, deliveryDate: now }
+    ]
+  }
+}
 
 const initialState: OrderState = {
   orderQty: 120000,
@@ -285,6 +314,8 @@ const initialState: OrderState = {
   // Start with one default command
   commands: [initialCommand("cmd-1", "Commande 1")],
   activeCommandId: "cmd-1",
+
+  milkOrders: [],
 }
 
 export const getTLCStats = (batches: Batch[]) => {
@@ -731,6 +762,15 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
   active.timing.powderTime = computePowderTime(active.osmosedVolume)
   active.timing.pastoTime = computePastoTime(active.whiteMassKg)
   active.timing.maturationTime = DEFAULT_MATURATION_MINUTES
+
+  // Calculate End Date
+  if (active.startDate) {
+    const totalMinutes = active.timing.transferTime + active.timing.osmoseTime + active.timing.powderTime + active.timing.pastoTime + active.timing.maturationTime
+    const startMs = new Date(active.startDate).getTime()
+    if (!isNaN(startMs)) {
+      active.calculatedEndDate = startMs + totalMinutes * 60000
+    }
+  }
 }
 
 type TLSToSchedule = {
@@ -747,7 +787,7 @@ type TLSToSchedule = {
 export const runMultiCommandSimulation = (
   commands: Command[],
   tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[]; tankPermeat?: Batch[] },
-  config?: { needs48hWash: boolean; needsC3Wash: boolean }
+  config?: { needs48hWash: boolean; needsC3Wash: boolean; productionStartTime?: string }
 ): MultiCommandSimResults => {
   let timeTransferFree = 0
   let timeOsmosisFree = 0
@@ -778,6 +818,8 @@ export const runMultiCommandSimulation = (
   const tlsAvailableAt = { TLS1: 0, TLS2: 0, TLS3: 0 }
 
   const ganttTasks: GanttTask[] = []
+
+  const simStartMs = config?.productionStartTime ? new Date(config.productionStartTime).getTime() : Date.now()
 
   const globalGroups = {
     skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
@@ -825,6 +867,8 @@ export const runMultiCommandSimulation = (
     let totalProtDrawn = 0
     let actualDrawn = 0
     let lastTypeDrawn = preferredTypes[0]
+    let milkAvailableAt = 0
+    let emptiedTLCs: string[] = []
 
     const tlcKeys: (keyof typeof tlcBatches)[] = ["tlc1", "tlc2", "tlc3", "tlc4", "tankPermeat"]
 
@@ -834,6 +878,10 @@ export const runMultiCommandSimulation = (
         if (remainingToDraw <= 0) break
         const batches = tlcBatches[k]
         if (!batches) continue
+
+        batches.sort((a, b) => a.deliveryDate - b.deliveryDate)
+        const beforeLen = batches.filter(b => b.volume > 0).length
+
         for (let i = 0; i < batches.length; i++) {
           if (remainingToDraw <= 0) break
           const b = batches[i]
@@ -844,12 +892,17 @@ export const runMultiCommandSimulation = (
             totalProtDrawn += draw * b.protein
             actualDrawn += draw
             lastTypeDrawn = type
+            milkAvailableAt = Math.max(milkAvailableAt, b.deliveryDate)
           }
         }
-        tlcBatches[k] = batches.filter(b => b.volume > 0)
+        const afterBatches = batches.filter(b => b.volume > 0)
+        if (beforeLen > 0 && afterBatches.length === 0) {
+          emptiedTLCs.push(k)
+        }
+        tlcBatches[k] = afterBatches
       }
     }
-    return { actualDrawn, totalProtDrawn, lastTypeDrawn }
+    return { actualDrawn, totalProtDrawn, lastTypeDrawn, milkAvailableAt, emptiedTLCs }
   }
 
   let colorIdx = 0
@@ -925,12 +978,18 @@ export const runMultiCommandSimulation = (
 
       const targetVal = 41
       const reqRaw = chunkMass * (targetVal / 33.0)
-      const { actualDrawn, totalProtDrawn, lastTypeDrawn } = drawMilk(reqRaw, group.preferredTypes)
+      const { actualDrawn, totalProtDrawn, lastTypeDrawn, milkAvailableAt, emptiedTLCs } = drawMilk(reqRaw, group.preferredTypes)
       const ci = actualDrawn > 0 ? totalProtDrawn / actualDrawn : 33.0
 
       const transferDuration = computeTransferTime(actualDrawn)
       const availableTLS = ["TLS1", "TLS2", "TLS3"].sort((a, b) => tlsAvailableAt[a as keyof typeof tlsAvailableAt] - tlsAvailableAt[b as keyof typeof tlsAvailableAt])[0] as keyof typeof tlsAvailableAt
-      const transferStart = Math.max(tlsAvailableAt[availableTLS], timeTransferFree)
+      
+      let deliveryDelayMinutes = 0
+      if (milkAvailableAt > simStartMs) {
+        deliveryDelayMinutes = Math.ceil((milkAvailableAt - simStartMs) / 60000)
+      }
+
+      const transferStart = Math.max(tlsAvailableAt[availableTLS], timeTransferFree, deliveryDelayMinutes)
       const transferEnd = transferStart + transferDuration
       timeTransferFree = transferEnd
       // tlsAvailableAt will be updated after the TLS is washed (after osmosis)
@@ -941,6 +1000,16 @@ export const runMultiCommandSimulation = (
         startMinute: transferStart,
         durationMinutes: transferDuration,
         color: getNextColor("transfer"),
+      })
+
+      emptiedTLCs.forEach(tlcName => {
+        ganttTasks.push({
+          key: `tlc-wash-${tlcName}-${Date.now()}-${Math.random()}`,
+          label: `Lavage ${tlcName.toUpperCase()}`,
+          startMinute: transferEnd,
+          durationMinutes: 50,
+          color: "#94a3b8",
+        })
       })
 
       // Osmosis Wash Check
@@ -1425,11 +1494,23 @@ const orderSlice = createSlice({
   initialState,
   reducers: {
     // Multi-command lifecycle management
-    addCommand(state) {
+    addCommand(state, action: PayloadAction<{ startDate: string; expectedEndDate: string; refName: string; potsQty: number; gramPerPot: number }>) {
+      const { startDate, expectedEndDate, refName, potsQty, gramPerPot } = action.payload
       const nextIdx = state.commands.length + 1
-      const newCmd = initialCommand(`cmd-${Date.now()}`, `Commande ${nextIdx}`)
+      const newCmd = initialCommand(`cmd-${Date.now()}`, `Commande ${nextIdx}`, {
+        startDate,
+        expectedEndDate,
+        references: [{
+          id: `ref-${Date.now()}`,
+          name: refName,
+          potsQty,
+          gramPerPot,
+          milkType: refName.toLowerCase().includes("skyr") ? "fcv3" : "bio"
+        }]
+      })
       state.commands.push(newCmd)
       state.activeCommandId = newCmd.id
+      recalculateActiveCommandMetrics(state, newCmd)
       syncActiveCommandToRoot(state)
       state.simulationDone = false
     },
@@ -1607,10 +1688,18 @@ const orderSlice = createSlice({
       const { tank, batch } = action.payload
       const nextId = `batch-${Date.now()}`
 
+      const currentBatches = state.tlcBatches[tank]
       // Enforce raw milk mixture rule: must have the same milkType as current batches, if not empty
-      const currentType = state.tlcBatches[tank].length > 0 ? state.tlcBatches[tank][0].milkType : null
+      const currentType = currentBatches.length > 0 ? currentBatches[0].milkType : null
       if (currentType && currentType !== batch.milkType) {
         return // mix violation
+      }
+
+      if (currentBatches.length > 0) {
+        const firstDelivery = currentBatches[0].deliveryDate
+        if (batch.deliveryDate - firstDelivery > 48 * 3600 * 1000) {
+          return // 48h violation
+        }
       }
 
       state.tlcBatches[tank].push({
@@ -1622,6 +1711,32 @@ const orderSlice = createSlice({
       state.commands.forEach(cmd => recalculateActiveCommandMetrics(state, cmd))
       syncActiveCommandToRoot(state)
       state.simulationDone = false
+    },
+    addMilkOrder(state, action: PayloadAction<Omit<MilkOrder, "id" | "status">>) {
+      state.milkOrders.push({
+        ...action.payload,
+        id: `milk-order-${Date.now()}`,
+        status: "pending"
+      })
+    },
+    receiveMilkOrder(state, action: PayloadAction<{ orderId: string; tank: "tlc1" | "tlc2" | "tlc3" | "tlc4" | "tankPermeat"; batchData: Omit<Batch, "id" | "milkType">; isComplete: boolean }>) {
+      const order = state.milkOrders.find(o => o.id === action.payload.orderId)
+      if (order && order.status === "pending") {
+        order.receivedQuantity = (order.receivedQuantity || 0) + action.payload.batchData.volume
+        if (action.payload.isComplete) {
+          order.status = "received"
+        }
+        const nextId = `batch-${Date.now()}`
+        const newBatch: Batch = {
+          ...action.payload.batchData,
+          id: nextId,
+          milkType: order.milkType,
+        }
+        state.tlcBatches[action.payload.tank].push(newBatch)
+        state.commands.forEach(cmd => recalculateActiveCommandMetrics(state, cmd))
+        syncActiveCommandToRoot(state)
+        state.simulationDone = false
+      }
     },
     deleteBatch(state, action: PayloadAction<{ tank: "tlc1" | "tlc2" | "tlc3" | "tlc4" | "tankPermeat"; batchId: string }>) {
       const { tank, batchId } = action.payload
@@ -1962,6 +2077,8 @@ export const {
   launchRefToMachine,
   addBatch,
   deleteBatch,
+  addMilkOrder,
+  receiveMilkOrder,
   setTargetValue,
   autoFillTLS,
   autoFillCF,

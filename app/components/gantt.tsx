@@ -1,10 +1,20 @@
 "use client"
 
 import { useDispatch, useSelector } from "react-redux"
+import { useState, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
 import { startSimulation, updateSimulationProgress, completeSimulation, toggleNeeds48hWash, toggleNeedsC3Wash } from "../lib/orderSlice"
+import TLC from "./tlc"
 
 export default function Gantt() {
+  const [showTLCPopup, setShowTLCPopup] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  
   const dispatch = useDispatch()
   const {
     commands,
@@ -14,10 +24,19 @@ export default function Gantt() {
     simulationStepText,
     simulationResults,
     needs48hWash,
-    needsC3Wash
+    needsC3Wash,
+    tlcBatches
   } = useSelector((state: RootState) => state.order)
 
   const totalReceivedVolume = commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
+  
+  let totalMilkAvailable = 0
+  Object.values(tlcBatches).forEach(tankBatches => {
+    totalMilkAvailable += tankBatches.reduce((sum, b) => sum + b.volume, 0)
+  })
+  
+  const isMilkShortage = totalReceivedVolume > totalMilkAvailable
+
   const totalDuration = simulationResults?.totalDurationMinutes || 0
   const tasks = simulationResults?.ganttTasks || []
 
@@ -69,16 +88,26 @@ export default function Gantt() {
           <button
             type="button"
             onClick={handleStartSimulation}
-            disabled={isSimulating || totalReceivedVolume <= 0}
+            disabled={isSimulating || totalReceivedVolume <= 0 || isMilkShortage}
             className="btn btn-primary"
             style={{ minWidth: 220 }}
           >
             {isSimulating ? "Simulation en cours..." : "Lancer la simulation"}
           </button>
           
-          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Cliquez pour lancer le calcul d&apos;ordonnancement optimal de toutes vos commandes.
-          </span>
+          {isMilkShortage ? (
+            <button
+               type="button"
+               onClick={() => setShowTLCPopup(true)}
+               style={{ backgroundColor: "var(--danger)", color: "white", padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: "bold" }}
+            >
+              ⚠️ Quantité de lait insuffisante. Compléter le stock (TLC)
+            </button>
+          ) : (
+            <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              Cliquez pour lancer le calcul d&apos;ordonnancement optimal de toutes vos commandes.
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 8, padding: "12px", backgroundColor: "#f1f5f9", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
@@ -223,6 +252,40 @@ export default function Gantt() {
             </ul>
           </div>
         </>
+      )}
+
+      {showTLCPopup && mounted && createPortal(
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "#f8fafc",
+          zIndex: 999999,
+          overflowY: "auto",
+        }}>
+          <div style={{
+            width: "100%",
+            minHeight: "100vh",
+            padding: "24px 40px",
+            position: "relative"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, borderBottom: "2px solid var(--border-color)", paddingBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, color: "var(--danger)", fontSize: "1.8rem" }}>⚠️ Lait Insuffisant : Renseigner les futures livraisons</h2>
+                <p style={{ margin: "4px 0 0 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  Ajoutez vos livraisons futures dans les cuves pour combler le manque de lait. La simulation prendra en compte l'heure d'arrivée du camion pour la production.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowTLCPopup(false)}
+                style={{ border: "none", background: "var(--danger)", color: "white", padding: "10px 24px", borderRadius: 8, fontSize: "1.1rem", cursor: "pointer", fontWeight: "bold", boxShadow: "var(--shadow-sm)" }}
+              >
+                ✕ Fermer et retourner au Gantt
+              </button>
+            </div>
+            <TLC />
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

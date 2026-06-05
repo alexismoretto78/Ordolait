@@ -35,7 +35,7 @@ describe('orderSlice reducer', () => {
 
   it('should handle addCommand', () => {
     const initialCommandsCount = initialState.commands.length;
-    const newState = orderReducer(initialState, addCommand());
+    const newState = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
     
     expect(newState.commands.length).toBe(initialCommandsCount + 1);
     const addedCommand = newState.commands[newState.commands.length - 1];
@@ -58,7 +58,7 @@ describe('orderSlice reducer', () => {
 
   it('should handle deleteCommand', () => {
     // First add a command to ensure we have at least 2
-    const stateWithTwo = orderReducer(initialState, addCommand());
+    const stateWithTwo = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
     const initialCount = stateWithTwo.commands.length;
     const commandToDelete = stateWithTwo.commands[stateWithTwo.commands.length - 1].id;
     
@@ -69,7 +69,7 @@ describe('orderSlice reducer', () => {
   });
 
   it('should handle setActiveCommand', () => {
-    const stateWithTwo = orderReducer(initialState, addCommand());
+    const stateWithTwo = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
     const firstCommandId = stateWithTwo.commands[0].id;
     const secondCommandId = stateWithTwo.commands[1].id;
     
@@ -90,8 +90,8 @@ describe('orderSlice reducer', () => {
 describe('orderSlice pure functions', () => {
   it('should compute TLC stats correctly', () => {
     const batches = [
-      { id: '1', lotNumber: '1', volume: 10000, protein: 32, fat: 38, milkType: 'bio' as any },
-      { id: '2', lotNumber: '2', volume: 20000, protein: 34, fat: 40, milkType: 'bio' as any }
+      { id: '1', lotNumber: '1', volume: 10000, protein: 32, fat: 38, milkType: 'bio' as any, deliveryDate: Date.now() },
+      { id: '2', lotNumber: '2', volume: 20000, protein: 34, fat: 40, milkType: 'bio' as any, deliveryDate: Date.now() }
     ];
     const stats = getTLCStats(batches);
     expect(stats.volume).toBe(30000);
@@ -176,7 +176,7 @@ describe('orderSlice complex logic', () => {
 
     const mockState: any = {
       tlcBatches: {
-        tlc1: [{ id: 'b1', lotNumber: '1', volume: 10000, protein: 33, fat: 38, milkType: 'bio' }],
+        tlc1: [{ id: 'b1', lotNumber: '1', volume: 10000, protein: 33, fat: 38, milkType: 'bio', deliveryDate: Date.now() }],
         tlc2: [], tlc3: [], tlc4: [], tankPermeat: []
       }
     };
@@ -216,7 +216,7 @@ describe('orderSlice complex logic', () => {
     ];
 
     const mockBatches: any = {
-      tlc1: [{ id: 'b1', lotNumber: '1', volume: 10000, protein: 33, fat: 38, milkType: 'bio' }],
+      tlc1: [{ id: 'b1', lotNumber: '1', volume: 10000, protein: 33, fat: 38, milkType: 'bio', deliveryDate: Date.now() }],
       tlc2: [], tlc3: [], tlc4: [], tankPermeat: []
     };
 

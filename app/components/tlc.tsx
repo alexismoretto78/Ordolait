@@ -1,409 +1,355 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { TLC_TANKS, addBatch, deleteBatch, getTLCStats, MilkType, OrderState } from "../lib/orderSlice"
+import { TLC_TANKS, addMilkOrder, receiveMilkOrder, getTLCStats, MilkType } from "../lib/orderSlice"
 
 export default function TLC() {
   const dispatch = useDispatch()
-  const { tlcBatches } = useSelector((state: RootState) => state.order)
+  const { tlcBatches, milkOrders } = useSelector((state: RootState) => state.order)
 
-  // Local state for the batch adding form
-  const [showAddForm, setShowAddForm] = useState<{ [tankKey: string]: boolean }>({})
-  const [newBatchVolume, setNewBatchVolume] = useState("10000")
-  const [newBatchProtein, setNewBatchProtein] = useState("33.0")
-  const [newBatchFat, setNewBatchFat] = useState("38.0")
-  const [newBatchMilkType, setNewBatchMilkType] = useState<MilkType>("bio")
+  const [activeSubTab, setActiveSubTab] = useState<"commande" | "ajouter" | "reception" | "gestion">("commande")
 
-  // Generate batch number YYMMDDHHMM from current local time
-  const generateLotNumber = () => {
-    const now = new Date()
-    const yy = String(now.getFullYear()).slice(-2)
-    const mm = String(now.getMonth() + 1).padStart(2, "0")
-    const dd = String(now.getDate()).padStart(2, "0")
-    const hh = String(now.getHours()).padStart(2, "0")
-    const min = String(now.getMinutes()).padStart(2, "0")
-    return `${yy}${mm}${dd}${hh}${min}`
+  // State for Add Milk Order
+  const [newOrderType, setNewOrderType] = useState<MilkType>("bio")
+  const [newOrderSupplier, setNewOrderSupplier] = useState("")
+  const [newOrderDate, setNewOrderDate] = useState(new Date().toISOString().slice(0, 16))
+  const [newOrderQty, setNewOrderQty] = useState("30000")
+
+  // State for Reception
+  const [selectedOrderId, setSelectedOrderId] = useState("")
+  const [destTank, setDestTank] = useState<"tlc1" | "tlc2" | "tlc3" | "tlc4" | "tankPermeat">("tlc1")
+  const [receptionDate, setReceptionDate] = useState(new Date().toISOString().slice(0, 16))
+  
+  // Control Popup State
+  const [showControlPopup, setShowControlPopup] = useState(false)
+  const [controlTemp, setControlTemp] = useState("4.0")
+  const [controlSnap, setControlSnap] = useState(true)
+  const [controlPh, setControlPh] = useState("6.7")
+  const [controlFcv3Mp, setControlFcv3Mp] = useState("34.0")
+  const [controlLitrageBL, setControlLitrageBL] = useState("30000")
+  const [controlMg, setControlMg] = useState("38.0")
+  const [controlMp, setControlMp] = useState("33.0")
+  const [controlAcidite, setControlAcidite] = useState("16.0")
+  const [realQty, setRealQty] = useState("30000")
+  const [closeOrder, setCloseOrder] = useState(true)
+
+  useEffect(() => {
+    const order = milkOrders.find(o => o.id === selectedOrderId)
+    if (order) {
+      const currentRec = order.receivedQuantity || 0
+      const newTotal = currentRec + Number(realQty)
+      setCloseOrder(newTotal >= order.quantity)
+    }
+  }, [realQty, selectedOrderId, milkOrders])
+
+  const pendingOrders = milkOrders.filter(o => o.status === "pending").sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())
+
+  const handleAddOrder = (e: React.FormEvent) => {
+    e.preventDefault()
+    dispatch(addMilkOrder({
+      milkType: newOrderType,
+      supplier: newOrderSupplier,
+      scheduledDate: newOrderDate,
+      quantity: Number(newOrderQty)
+    }))
+    setActiveSubTab("commande")
+    setNewOrderSupplier("")
   }
 
-  const handleAddBatch = (tankKey: keyof OrderState["tlcBatches"]) => {
-    const batches = tlcBatches[tankKey]
-    const activeType = batches.length > 0 ? batches[0].milkType : newBatchMilkType
-
-    const volume = Number(newBatchVolume.trim().replace(",", ".")) || 0
-    const protein = Number(newBatchProtein.trim().replace(",", ".")) || 0
-    const fat = Number(newBatchFat.trim().replace(",", ".")) || 0
-
-    if (volume <= 0 || protein <= 0 || fat <= 0) {
-      alert("Veuillez saisir des valeurs positives valides.")
+  const handleReceiveOrder = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedOrderId) {
+      alert("Veuillez sélectionner une commande de lait à réceptionner.")
       return
     }
 
-    const maxCapacity = 30000
-    const currentStats = getTLCStats(batches)
-    if (currentStats.volume + volume > maxCapacity) {
-      alert(`Impossible d'ajouter ce lot : la capacité maximale de ${maxCapacity.toLocaleString()} L serait dépassée (actuel: ${currentStats.volume.toLocaleString()} L).`)
-      return
-    }
+    const order = milkOrders.find(o => o.id === selectedOrderId)
+    
+    // Generate Lot Number from receptionDate
+    const d = new Date(receptionDate)
+    const lotNumber = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`
 
-    dispatch(addBatch({
-      tank: tankKey,
-      batch: {
-        lotNumber: generateLotNumber(),
-        volume,
-        protein,
-        fat,
-        milkType: activeType
+    dispatch(receiveMilkOrder({
+      orderId: selectedOrderId,
+      tank: destTank,
+      isComplete: closeOrder,
+      batchData: {
+        lotNumber,
+        volume: Number(realQty),
+        protein: Number(controlMp),
+        fat: Number(controlMg),
+        deliveryDate: d.getTime(),
+        temperature: Number(controlTemp),
+        snapTest: controlSnap,
+        ph: Number(controlPh),
+        aciditeDornic: Number(controlAcidite),
+        litrageBL: Number(controlLitrageBL),
+        fcv3Mp: order?.milkType === "fcv3" ? Number(controlFcv3Mp) : undefined
       }
     }))
-
-    // Reset local states
-    setShowAddForm(prev => ({ ...prev, [tankKey]: false }))
-    setNewBatchVolume("10000")
-    setNewBatchProtein("33.0")
-    setNewBatchFat("38.0")
+    
+    setShowControlPopup(false)
+    setSelectedOrderId("")
+    setActiveSubTab("gestion")
   }
-
-  const milkTypeConfigs = {
-    bio: {
-      label: "Lait Bio",
-      color: "var(--success)",
-      gradient: "linear-gradient(180deg, #34d399 0%, #10b981 100%)",
-      shadow: "0 0 12px rgba(16, 185, 129, 0.3)",
-      bgActive: "rgba(16, 185, 129, 0.12)",
-      emoji: "🌱"
-    },
-    fcv3: {
-      label: "Lait FCV3",
-      color: "var(--primary)",
-      gradient: "linear-gradient(180deg, #60a5fa 0%, #2563eb 100%)",
-      shadow: "0 0 12px rgba(37, 99, 235, 0.3)",
-      bgActive: "rgba(37, 99, 235, 0.12)",
-      emoji: "🧪"
-    },
-    savoie: {
-      label: "Lait de Savoie",
-      color: "var(--warning)",
-      gradient: "linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%)",
-      shadow: "0 0 12px rgba(245, 158, 11, 0.3)",
-      bgActive: "rgba(245, 158, 11, 0.12)",
-      emoji: "🏔️"
-    },
-    montagne: {
-      label: "Lait de montagne",
-      color: "var(--violet)",
-      gradient: "linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%)",
-      shadow: "0 0 12px rgba(139, 92, 246, 0.3)",
-      bgActive: "rgba(139, 92, 246, 0.12)",
-      emoji: "⛰️"
-    },
-    creme: {
-      label: "Crème",
-      color: "var(--danger)",
-      gradient: "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)",
-      shadow: "0 0 12px rgba(239, 68, 68, 0.3)",
-      bgActive: "rgba(239, 68, 68, 0.12)",
-      emoji: "🧈"
-    },
-    ecreme_savoie: {
-      label: "Écrémé Savoie",
-      color: "var(--warning)",
-      gradient: "linear-gradient(180deg, #fde68a 0%, #f59e0b 100%)",
-      shadow: "0 0 12px rgba(245, 158, 11, 0.3)",
-      bgActive: "rgba(245, 158, 11, 0.12)",
-      emoji: "💧"
-    },
-    ecreme_montagne: {
-      label: "Écrémé Montagne",
-      color: "var(--violet)",
-      gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)",
-      shadow: "0 0 12px rgba(139, 92, 246, 0.3)",
-      bgActive: "rgba(139, 92, 246, 0.12)",
-      emoji: "💧"
-    }
-  }
-
-  // Calculate global totals
-  let totalVolume = 0
-  TLC_TANKS.forEach((tank) => {
-    const key = tank.key as keyof typeof tlcBatches
-    totalVolume += getTLCStats(tlcBatches[key]).volume
-  })
-  const totalCapacity = 135000
-  const totalPct = (totalVolume / totalCapacity) * 100
 
   return (
     <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 16, marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: "1.8rem" }}>🥛</span>
-          <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>Réception et Lots du Stock de Lait Cru (TLC)</h2>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>STOCK GLOBAL</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-            <span style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--text-main)" }}>
-              {totalVolume.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} / {totalCapacity.toLocaleString()} L
-            </span>
-            <span style={{ fontSize: "0.85rem", padding: "2px 8px", borderRadius: "10px", backgroundColor: "var(--primary-light)", color: "var(--primary)", fontWeight: 700 }}>
-              {totalPct.toFixed(0)}%
-            </span>
-          </div>
+          <h2 style={{ margin: 0 }}>Réception de Lait (TLC/TLP)</h2>
         </div>
       </div>
 
-      {/* Global Stock Progress Bar */}
-      <div style={{ background: "#f1f5f9", borderRadius: 8, height: 10, width: "100%", overflow: "hidden", marginBottom: 32, border: "1px solid var(--border-color)" }}>
-        <div style={{ background: "linear-gradient(90deg, var(--primary) 0%, var(--success) 100%)", height: "100%", width: `${totalPct}%`, transition: "width 0.4s ease-out" }} />
+      {/* Sub-tabs Navigation */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px", borderBottom: "1px solid var(--border-color)", paddingBottom: "12px" }}>
+        <button onClick={() => setActiveSubTab("commande")} className={`btn ${activeSubTab === "commande" ? "btn-primary" : "btn-secondary"}`}>Commandes à venir</button>
+        <button onClick={() => setActiveSubTab("ajouter")} className={`btn ${activeSubTab === "ajouter" ? "btn-primary" : "btn-secondary"}`}>➕ Ajouter une commande</button>
+        <button onClick={() => setActiveSubTab("reception")} className={`btn ${activeSubTab === "reception" ? "btn-primary" : "btn-secondary"}`}>Réception en cours</button>
+        <button onClick={() => setActiveSubTab("gestion")} className={`btn ${activeSubTab === "gestion" ? "btn-primary" : "btn-secondary"}`}>Gestion des TLC/TLP</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
-        {TLC_TANKS.map((tank) => {
-          const key = tank.key as keyof typeof tlcBatches
-          const batches = tlcBatches[key]
-          const stats = getTLCStats(batches)
-          const pct = (stats.volume / tank.capacity) * 100
-
-          // Determine the tank milk type based on active batches or form selection
-          const currentType = batches.length > 0 ? batches[0].milkType : newBatchMilkType
-          const config = milkTypeConfigs[currentType]
-
-          const isOpenForm = showAddForm[key]
-
-          return (
-            <div
-              key={tank.name}
-              style={{
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--radius-lg)",
-                padding: "20px 16px",
-                background: "#ffffff",
-                display: "flex",
-                flexDirection: "column",
-                boxShadow: "var(--shadow-sm)",
-                position: "relative",
-                transition: "var(--transition)",
-              }}
-            >
-              {/* Card top border glow */}
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 5, background: config.gradient, borderTopLeftRadius: "var(--radius-lg)", borderTopRightRadius: "var(--radius-lg)" }} />
-
-              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: 12, alignItems: "center" }}>
-                <strong style={{ fontSize: "1.15rem", color: "#0f172a" }}>{tank.name}</strong>
-                <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "12px", border: `1px solid ${config.color}`, color: config.color, fontWeight: 700, whiteSpace: "nowrap" }}>
-                  {config.emoji} {config.label}
-                </span>
-              </div>
-
-              {/* Graphical Cylinder & averages */}
-              <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 20, backgroundColor: "var(--bg-app)", padding: 12, borderRadius: "var(--radius-md)" }}>
-                {/* Cylinder */}
-                <div
-                  style={{
-                    position: "relative",
-                    width: "70px",
-                    height: "90px",
-                    background: "#ffffff",
-                    borderRadius: "14px 14px 18px 18px",
-                    border: "2px solid #cbd5e1",
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "flex-end"
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "100%",
-                      height: `${pct}%`,
-                      background: config.gradient,
-                      transition: "height 0.4s ease-out",
-                      position: "relative",
-                      borderRadius: "0 0 6px 6px"
-                    }}
-                  >
-                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: "rgba(255,255,255,0.4)" }} />
-                  </div>
-                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "0.75rem", fontWeight: 800, color: pct > 45 ? "white" : "var(--text-muted)", textShadow: pct > 45 ? "0 1px 2px rgba(0,0,0,0.3)" : "none" }}>
-                    {pct.toFixed(0)}%
-                  </div>
-                </div>
-
-                {/* stats */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>VOLUME TOTAL</span>
-                  <strong style={{ fontSize: "1.1rem", color: "#0f172a" }}>{stats.volume.toLocaleString()} L</strong>
-
-                  {batches.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 4, borderTop: "1px dashed #cbd5e1", paddingTop: 4 }}>
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                        🧪 Protéines : <strong>{stats.protein.toFixed(1)} g/L</strong>
-                      </span>
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                        🧈 Grisses : <strong>{stats.fat.toFixed(1)} g/L</strong>
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Batches List inside the TLC */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                  Lots de Lait Cru ({batches.length})
-                </span>
-
-                {batches.length === 0 ? (
-                  <div style={{ padding: "16px 8px", border: "1px dashed var(--border-color)", borderRadius: "var(--radius-md)", textAlign: "center", fontStyle: "italic", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                    Aucun lot. Cuve vide.
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "160px", overflowY: "auto", paddingRight: 4 }}>
-                    {batches.map((batch) => (
-                      <div
-                        key={batch.id}
-                        style={{
-                          backgroundColor: "#f8fafc",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: "6px",
-                          padding: "8px 10px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center"
-                        }}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <strong style={{ fontSize: "0.8rem", color: "#334155" }}>Lot: {batch.lotNumber}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                            {batch.volume.toLocaleString()} L — Prot: <strong>{batch.protein} g/L</strong> | MG: <strong>{batch.fat}</strong>
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => dispatch(deleteBatch({ tank: key, batchId: batch.id }))}
-                          style={{
-                            border: "none",
-                            background: "none",
-                            color: "var(--text-muted)",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                            padding: "4px 8px",
-                            transition: "var(--transition)",
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
-                          onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
-                          title="Supprimer ce lot"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Add Batch Trigger & Form */}
-              <div>
-                {!isOpenForm ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (batches.length === 0) {
-                        const defaultType = key === "tlc1" ? "bio" : key === "tlc2" ? "fcv3" : key === "tlc3" ? "savoie" : key === "tankPermeat" ? "ecreme_savoie" : "montagne"
-                        setNewBatchMilkType(defaultType)
-                      }
-                      setShowAddForm(prev => ({ ...prev, [key]: true }))
-                    }}
-                    className="btn btn-secondary"
-                    style={{ width: "100%", padding: "8px 12px", fontSize: "0.8rem" }}
-                  >
-                    ➕ Réceptionner un Lot
-                  </button>
-                ) : (
-                  <div style={{ backgroundColor: "#f8fafc", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "0.8rem", color: "var(--primary)" }}>Nouveau Lot à réceptionner</strong>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddForm(prev => ({ ...prev, [key]: false }))}
-                        style={{ border: "none", background: "none", cursor: "pointer", fontWeight: 700, color: "var(--text-muted)" }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    {/* MilkType choice only enabled if tank is empty */}
-                    {batches.length === 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>Type de Lait</span>
-                        <select
-                          value={newBatchMilkType}
-                          onChange={(e) => setNewBatchMilkType(e.target.value as MilkType)}
-                          style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                        >
-                          <option value="bio">🌱 Bio</option>
-                          <option value="fcv3">🧪 FCV3</option>
-                          <option value="savoie">🏔️ Savoie</option>
-                          <option value="montagne">⛰️ Montagne</option>
-                          <option value="ecreme_savoie">💧 Écrémé Savoie</option>
-                          <option value="ecreme_montagne">💧 Écrémé Montagne</option>
-                          <option value="creme">🧈 Crème</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>Volume (L)</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={newBatchVolume}
-                          onChange={(e) => setNewBatchVolume(e.target.value)}
-                          style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                        />
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>Protéines (g/L)</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={newBatchProtein}
-                            onChange={(e) => setNewBatchProtein(e.target.value)}
-                            style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)", textAlign: "center" }}
-                          />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>M. Grasse (g/L)</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={newBatchFat}
-                            onChange={(e) => setNewBatchFat(e.target.value)}
-                            style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: "4px", border: "1px solid var(--border-color)", textAlign: "center" }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAddBatch(key)}
-                      className="btn btn-primary"
-                      style={{ width: "100%", padding: "6px 12px", fontSize: "0.75rem", marginTop: 4 }}
-                    >
-                      ✓ Enregistrer le Lot
-                    </button>
-                  </div>
-                )}
-              </div>
-
+      {/* COMMANDES A VENIR */}
+      {activeSubTab === "commande" && (
+        <div>
+          {pendingOrders.length === 0 ? (
+            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+              Aucune commande de lait en attente.
             </div>
-          )
-        })}
-      </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {pendingOrders.map(o => (
+                <div key={o.id} style={{ border: "1px solid var(--border-color)", padding: "16px", borderRadius: "var(--radius-md)", backgroundColor: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <h4 style={{ margin: "0 0 4px 0", color: "var(--primary)" }}>{o.supplier || "Fournisseur Inconnu"}</h4>
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
+                      <span><strong>Type :</strong> {o.milkType}</span>
+                      <span><strong>Date :</strong> {new Date(o.scheduledDate).toLocaleString()}</span>
+                      <span><strong>Quantité :</strong> {o.receivedQuantity ? `${o.receivedQuantity.toLocaleString()} L / ` : ""}{o.quantity.toLocaleString()} L</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setSelectedOrderId(o.id); setActiveSubTab("reception"); }} className="btn btn-success" style={{ padding: "6px 12px", fontSize: "0.8rem" }}>
+                    Réceptionner
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AJOUTER UNE COMMANDE DE LAIT */}
+      {activeSubTab === "ajouter" && (
+        <div style={{ maxWidth: "500px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
+          <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande de Lait</h3>
+          <form onSubmit={handleAddOrder} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+              Type de Lait
+              <select value={newOrderType} onChange={(e) => setNewOrderType(e.target.value as MilkType)} style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                <option value="bio">Bio</option>
+                <option value="fcv3">FCV3</option>
+                <option value="savoie">Savoie</option>
+                <option value="montagne">Montagne</option>
+                <option value="creme">Crème</option>
+                <option value="ecreme_savoie">Écrémé Savoie</option>
+                <option value="ecreme_montagne">Écrémé Montagne</option>
+              </select>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+              Fournisseur
+              <input type="text" value={newOrderSupplier} onChange={(e) => setNewOrderSupplier(e.target.value)} required placeholder="Nom du fournisseur/coopérative" style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+              Date de livraison prévue
+              <input type="datetime-local" value={newOrderDate} onChange={(e) => setNewOrderDate(e.target.value)} required style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+              Quantité (L)
+              <input type="number" value={newOrderQty} onChange={(e) => setNewOrderQty(e.target.value)} required min="1" style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+            </label>
+
+            <button type="submit" className="btn btn-success" style={{ marginTop: "10px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>✓ Valider</button>
+          </form>
+        </div>
+      )}
+
+      {/* RECEPTION EN COURS */}
+      {activeSubTab === "reception" && (
+        <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+          {pendingOrders.length === 0 ? (
+            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+              Aucune commande à réceptionner. Allez dans "Ajouter une commande" en premier.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                Commande de Lait
+                <select value={selectedOrderId} onChange={(e) => setSelectedOrderId(e.target.value)} style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                  <option value="" disabled>-- Sélectionner --</option>
+                  {pendingOrders.map(o => (
+                    <option key={o.id} value={o.id}>{o.supplier} - {o.milkType} - {o.receivedQuantity ? `${o.receivedQuantity}L / ` : ""}{o.quantity}L</option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedOrderId && (
+                <>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    TLC/TLP de destination
+                    <select value={destTank} onChange={(e) => setDestTank(e.target.value as any)} style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                      {TLC_TANKS.map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Date et Heure de Réception (génère le n° de lot)
+                    <input type="datetime-local" value={receptionDate} onChange={(e) => setReceptionDate(e.target.value)} required style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+                  </label>
+
+                  <button type="button" onClick={() => setShowControlPopup(true)} className="btn btn-primary" style={{ padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
+                    📋 Contrôle Qualité
+                  </button>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600, marginTop: "8px" }}>
+                    Quantité reçue réelle (L)
+                    <input type="number" value={realQty} onChange={(e) => setRealQty(e.target.value)} required min="1" style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", marginTop: "8px", cursor: "pointer" }}>
+                    <input type="checkbox" checked={closeOrder} onChange={e => setCloseOrder(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+                    Clôturer la commande après cette réception
+                  </label>
+
+                  <button type="button" onClick={handleReceiveOrder} className="btn btn-success" style={{ marginTop: "10px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
+                    ✓ Valider la réception
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* CONTROL POPUP MODAL */}
+          {showControlPopup && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div style={{ backgroundColor: "#fff", padding: "24px", borderRadius: "var(--radius-lg)", maxWidth: "500px", width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+                <h3 style={{ marginTop: 0, marginBottom: "16px", color: "var(--primary)" }}>Contrôle Qualité Lait</h3>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Température (°C)
+                    <input type="number" step="0.1" value={controlTemp} onChange={e => setControlTemp(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+                  
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Snap Test OK ?
+                    <select value={controlSnap ? "true" : "false"} onChange={e => setControlSnap(e.target.value === "true")} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }}>
+                      <option value="true">Oui</option>
+                      <option value="false">Non</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    pH
+                    <input type="number" step="0.01" value={controlPh} onChange={e => setControlPh(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Acidité Dornic (°D)
+                    <input type="number" step="0.1" value={controlAcidite} onChange={e => setControlAcidite(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Litrage sur BL (L)
+                    <input type="number" value={controlLitrageBL} onChange={e => setControlLitrageBL(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "12px", borderTop: "1px solid #ccc", paddingTop: "12px" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    MG (Matière Grasse) g/L
+                    <input type="number" step="0.1" value={controlMg} onChange={e => setControlMg(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+                  
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    MP (Matière Protéique) g/L
+                    <input type="number" step="0.1" value={controlMp} onChange={e => setControlMp(e.target.value)} style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "4px" }} />
+                  </label>
+                </div>
+
+                {milkOrders.find(o => o.id === selectedOrderId)?.milkType === "fcv3" && (
+                  <div style={{ marginTop: "12px" }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600, color: "var(--primary)" }}>
+                      MP spécifique FCV3 (g/L)
+                      <input type="number" step="0.1" value={controlFcv3Mp} onChange={e => setControlFcv3Mp(e.target.value)} style={{ padding: "6px", border: "1px solid var(--primary)", borderRadius: "4px" }} />
+                    </label>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "12px", marginTop: "24px", justifyContent: "flex-end" }}>
+                  <button onClick={() => setShowControlPopup(false)} className="btn btn-secondary">Fermer</button>
+                  <button onClick={() => setShowControlPopup(false)} className="btn btn-success">Enregistrer les valeurs</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* GESTION DES TLC/TLP */}
+      {activeSubTab === "gestion" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "24px" }}>
+          {TLC_TANKS.map(tank => {
+            const batches = tlcBatches[tank.key as keyof typeof tlcBatches]
+            const stats = getTLCStats(batches)
+            const pct = Math.max(0, (stats.volume / tank.capacity) * 100)
+            const typeStr = batches.length > 0 ? batches[0].milkType : "Vide"
+
+            return (
+              <div key={tank.name} style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-lg)", padding: "20px 16px", backgroundColor: "#fff", boxShadow: "var(--shadow-sm)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", alignItems: "center" }}>
+                  <strong style={{ fontSize: "1.15rem" }}>{tank.name}</strong>
+                  <span style={{ fontSize: "0.8rem", padding: "2px 8px", borderRadius: "12px", backgroundColor: "#f1f5f9", fontWeight: 700 }}>
+                    {typeStr}
+                  </span>
+                </div>
+                
+                <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "20px" }}>
+                  <div style={{ position: "relative", width: "60px", height: "80px", borderRadius: "10px 10px 16px 16px", border: "2px solid #cbd5e1", overflow: "hidden", display: "flex", alignItems: "flex-end" }}>
+                    <div style={{ width: "100%", height: `${pct}%`, background: "var(--primary)", transition: "height 0.4s" }} />
+                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "0.7rem", fontWeight: 800, color: pct > 45 ? "#fff" : "var(--text-muted)" }}>
+                      {pct.toFixed(0)}%
+                    </div>
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: "1.1rem" }}>{stats.volume.toLocaleString()} L</strong>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                      MP Moyenne : {stats.protein.toFixed(2)} g/L<br/>
+                      MG Moyenne : {stats.fat.toFixed(2)} g/L
+                    </div>
+                  </div>
+                </div>
+
+                {batches.length > 0 && (
+                  <div style={{ fontSize: "0.8rem" }}>
+                    <strong>Lots présents ({batches.length}):</strong>
+                    <ul style={{ paddingLeft: "16px", margin: "4px 0 0 0", color: "var(--text-muted)" }}>
+                      {batches.map(b => (
+                        <li key={b.id}>Lot {b.lotNumber} ({b.volume}L)</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
