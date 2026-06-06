@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux"
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
-import { startSimulation, updateSimulationProgress, completeSimulation, toggleNeeds48hWash, toggleNeedsC3Wash } from "../lib/orderSlice"
+import { toggleNeeds48hWash, toggleNeedsC3Wash } from "../lib/orderSlice"
 import TLC from "./tlc"
 
 export default function Gantt() {
@@ -18,10 +18,6 @@ export default function Gantt() {
   const dispatch = useDispatch()
   const {
     commands,
-    isSimulating,
-    simulationDone,
-    simulationProgress,
-    simulationStepText,
     simulationResults,
     needs48hWash,
     needsC3Wash,
@@ -46,56 +42,14 @@ export default function Gantt() {
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
   }
 
-  const handleStartSimulation = () => {
-    if (totalReceivedVolume <= 0) return
-
-    dispatch(startSimulation())
-
-    const steps = [
-      { p: 10, text: "Analyse et ordonnancement optimal des commandes..." },
-      { p: 25, text: "Simulation du transfert séquentiel TLC → TLS..." },
-      { p: 45, text: "Osmose inverse et détection de capacité en cuves..." },
-      { p: 65, text: "Pasteurisation continue avec recharge dynamique..." },
-      { p: 85, text: "Maturation en cuves et allocation aux emballeuses..." },
-      { p: 95, text: "Calcul des vitesses réelles de conditionnement (ATIA/GRUN)..." },
-      { p: 100, text: "Optimisation de production terminée avec succès !" },
-    ]
-
-    let currentStep = 0
-    const interval = setInterval(() => {
-      if (currentStep < steps.length) {
-        dispatch(
-          updateSimulationProgress({
-            progress: steps[currentStep].p,
-            stepText: steps[currentStep].text,
-          })
-        )
-        currentStep++
-      } else {
-        clearInterval(interval)
-        dispatch(completeSimulation())
-      }
-    }, 250)
-  }
-
   return (
     <div className="card">
-      <h2>6. Planning Gantt Chronologique Global</h2>
+      <h2>6. Planning Gantt Chronologique (Dynamique)</h2>
 
       {/* Control bar */}
       <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={handleStartSimulation}
-            disabled={isSimulating || totalReceivedVolume <= 0 || isMilkShortage}
-            className="btn btn-primary"
-            style={{ minWidth: 220 }}
-          >
-            {isSimulating ? "Simulation en cours..." : "Lancer la simulation"}
-          </button>
-          
-          {isMilkShortage ? (
+          {isMilkShortage && (
             <button
                type="button"
                onClick={() => setShowTLCPopup(true)}
@@ -103,10 +57,6 @@ export default function Gantt() {
             >
               ⚠️ Quantité de lait insuffisante. Compléter le stock (TLC)
             </button>
-          ) : (
-            <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-              Cliquez pour lancer le calcul d&apos;ordonnancement optimal de toutes vos commandes.
-            </span>
           )}
         </div>
 
@@ -131,24 +81,14 @@ export default function Gantt() {
 
         {totalReceivedVolume <= 0 && (
           <p style={{ color: "var(--danger)", fontSize: "0.85rem", fontWeight: 600, fontStyle: "italic", marginTop: 4 }}>
-            ⚠️ Configurez au moins une commande avec un nombre de pots supérieur à 0 pour lancer la simulation.
+            ⚠️ Configurez au moins une commande avec un nombre de pots supérieur à 0 pour voir le planning.
           </p>
         )}
       </div>
 
-      {/* Progress animation */}
-      {isSimulating && (
-        <div style={{ marginBottom: 24, padding: "12px 16px", backgroundColor: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-          <div className="simulation-step-status">{simulationStepText}</div>
-          <div className="simulation-progress-container" style={{ margin: "8px 0 0 0" }}>
-            <div className="simulation-progress-bar" style={{ width: `${simulationProgress}%` }}></div>
-          </div>
-        </div>
-      )}
-
-      {!simulationDone && !isSimulating ? (
+      {tasks.length === 0 ? (
         <p className="gantt-empty">
-          Aucune simulation active. Cliquez sur le bouton &quot;Lancer la simulation&quot; ci-dessus pour générer le planning de production multi-commandes.
+          Aucun planning à afficher. Ajoutez une commande pour générer le Gantt automatiquement.
         </p>
       ) : (
         <>
@@ -171,42 +111,62 @@ export default function Gantt() {
                         {formatTime(task.durationMinutes)}
                       </div>
                       <div className="gantt-timeline-container" style={{ flex: "1 1 auto" }}>
-                        <div className="gantt-bar-bg">
-                          {task.segments ? (
-                            task.segments.map((seg: any, sIdx) => {
-                              const displayText = seg.shortLabel || (seg.label ? seg.label.split("Lavage ")[1] || seg.label : "");
-                              return (
-                                <div
-                                  key={sIdx}
-                                  className="gantt-bar-fill"
-                                  style={{
-                                    left: `${(seg.startMinute / totalDuration) * 100}%`,
-                                    width: `${(seg.durationMinutes / totalDuration) * 100}%`,
-                                    backgroundColor: seg.color,
-                                    fontSize: "0.65rem",
-                                    borderLeft: "1px solid rgba(0, 0, 0, 0.15)",
-                                    borderRight: "1px solid rgba(0, 0, 0, 0.15)",
-                                  }}
-                                  title={`${seg.label} (Début: +${formatTime(seg.startMinute)})`}
-                                >
-                                  {displayText}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div
-                              className="gantt-bar-fill"
-                              style={{
-                                left: `${(task.startMinute / totalDuration) * 100}%`,
-                                width: `${(task.durationMinutes / totalDuration) * 100}%`,
-                                backgroundColor: task.color,
-                                fontSize: "0.7rem",
-                              }}
-                            >
-                              +{formatTime(task.startMinute)}
+                        {(() => {
+                          let lanes: any[][] = [];
+                          if (task.segments) {
+                            const sorted = [...task.segments].sort((a, b) => a.startMinute - b.startMinute);
+                            sorted.forEach(seg => {
+                              let placed = false;
+                              for (let i = 0; i < lanes.length; i++) {
+                                const lane = lanes[i];
+                                const lastSeg = lane[lane.length - 1];
+                                if (lastSeg.startMinute + lastSeg.durationMinutes <= seg.startMinute) {
+                                  lane.push(seg);
+                                  placed = true;
+                                  break;
+                                }
+                              }
+                              if (!placed) {
+                                lanes.push([seg]);
+                              }
+                            });
+                          } else {
+                            lanes.push([task]);
+                          }
+
+                          const rowHeight = 32;
+                          const gap = 4;
+                          const totalHeight = lanes.length > 0 ? lanes.length * rowHeight + (lanes.length - 1) * gap : rowHeight;
+
+                          return (
+                            <div className="gantt-bar-bg" style={{ height: `${totalHeight}px` }}>
+                              {lanes.map((lane, laneIdx) => 
+                                lane.map((seg: any, sIdx: number) => {
+                                  const displayText = seg.shortLabel || (seg.label ? seg.label.split("Lavage ")[1] || seg.label : "");
+                                  return (
+                                    <div
+                                      key={`${laneIdx}-${sIdx}`}
+                                      className="gantt-bar-fill"
+                                      style={{
+                                        top: `${laneIdx * (rowHeight + gap)}px`,
+                                        height: `${rowHeight}px`,
+                                        left: `${(seg.startMinute / totalDuration) * 100}%`,
+                                        width: `${(seg.durationMinutes / totalDuration) * 100}%`,
+                                        backgroundColor: seg.color || task.color,
+                                        fontSize: task.segments ? "0.65rem" : "0.7rem",
+                                        borderLeft: "1px solid rgba(0, 0, 0, 0.15)",
+                                        borderRight: "1px solid rgba(0, 0, 0, 0.15)",
+                                      }}
+                                      title={`${seg.label || task.label} (Début: +${formatTime(seg.startMinute)})`}
+                                    >
+                                      {task.segments ? displayText : `+${formatTime(task.startMinute)}`}
+                                    </div>
+                                  );
+                                })
+                              )}
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
@@ -272,7 +232,7 @@ export default function Gantt() {
               <div>
                 <h2 style={{ margin: 0, color: "var(--danger)", fontSize: "1.8rem" }}>⚠️ Lait Insuffisant : Renseigner les futures livraisons</h2>
                 <p style={{ margin: "4px 0 0 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                  Ajoutez vos livraisons futures dans les cuves pour combler le manque de lait. La simulation prendra en compte l'heure d'arrivée du camion pour la production.
+                  Ajoutez vos livraisons futures dans les cuves pour combler le manque de lait. La simulation prendra en compte l&apos;heure d&apos;arrivée du camion pour la production.
                 </p>
               </div>
               <button 

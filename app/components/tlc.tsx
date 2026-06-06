@@ -5,6 +5,16 @@ import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import { TLC_TANKS, addMilkOrder, receiveMilkOrder, getTLCStats, MilkType } from "../lib/orderSlice"
 
+const milkTypeConfigs: Record<string, any> = {
+  bio: { label: "Bio", color: "var(--success)", gradient: "linear-gradient(180deg, #86efac 0%, #22c55e 100%)", emoji: "🌱" },
+  fcv3: { label: "FCV3", color: "var(--primary)", gradient: "linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%)", emoji: "🐄" },
+  savoie: { label: "Savoie", color: "var(--info)", gradient: "linear-gradient(180deg, #67e8f9 0%, #06b6d4 100%)", emoji: "🏔️" },
+  montagne: { label: "Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #c4b5fd 0%, #8b5cf6 100%)", emoji: "⛰️" },
+  creme: { label: "Crème", color: "var(--danger)", gradient: "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)", emoji: "🧈" },
+  ecreme_savoie: { label: "Écrémé Savoie", color: "var(--warning)", gradient: "linear-gradient(180deg, #fde68a 0%, #f59e0b 100%)", emoji: "💧" },
+  ecreme_montagne: { label: "Écrémé Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)", emoji: "💧" }
+}
+
 export default function TLC() {
   const dispatch = useDispatch()
   const { tlcBatches, milkOrders } = useSelector((state: RootState) => state.order)
@@ -184,7 +194,7 @@ export default function TLC() {
         <div style={{ maxWidth: "600px", margin: "0 auto" }}>
           {pendingOrders.length === 0 ? (
             <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
-              Aucune commande à réceptionner. Allez dans "Ajouter une commande" en premier.
+              Aucune commande à réceptionner. Allez dans &quot;Ajouter une commande&quot; en premier.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
@@ -309,28 +319,31 @@ export default function TLC() {
             const stats = getTLCStats(batches)
             const pct = Math.max(0, (stats.volume / tank.capacity) * 100)
             const typeStr = batches.length > 0 ? batches[0].milkType : "Vide"
+            const currentType = batches.length > 0 ? batches[0].milkType : "bio"
+            const config = milkTypeConfigs[currentType] || milkTypeConfigs["bio"]
 
             return (
               <div key={tank.name} style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-lg)", padding: "20px 16px", backgroundColor: "#fff", boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", alignItems: "center" }}>
                   <strong style={{ fontSize: "1.15rem" }}>{tank.name}</strong>
                   <span style={{ fontSize: "0.8rem", padding: "2px 8px", borderRadius: "12px", backgroundColor: "#f1f5f9", fontWeight: 700 }}>
-                    {typeStr}
+                    {config.emoji} {typeStr}
                   </span>
                 </div>
                 
-                <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "20px" }}>
-                  <div style={{ position: "relative", width: "60px", height: "80px", borderRadius: "10px 10px 16px 16px", border: "2px solid #cbd5e1", overflow: "hidden", display: "flex", alignItems: "flex-end" }}>
-                    <div style={{ width: "100%", height: `${pct}%`, background: "var(--primary)", transition: "height 0.4s" }} />
-                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "0.7rem", fontWeight: 800, color: pct > 45 ? "#fff" : "var(--text-muted)" }}>
+                <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "20px", backgroundColor: "#f8fafc", padding: "12px", borderRadius: "var(--radius-md)" }}>
+                  <div style={{ position: "relative", width: "70px", height: "90px", borderRadius: "14px 14px 18px 18px", border: "2px solid #cbd5e1", overflow: "hidden", display: "flex", alignItems: "flex-end", backgroundColor: "#ffffff" }}>
+                    <div style={{ width: "100%", height: `${pct}%`, background: config.gradient, transition: "height 0.4s ease-out", borderRadius: "0 0 6px 6px" }} />
+                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "0.75rem", fontWeight: 800, color: pct > 45 ? "#fff" : "var(--text-muted)", textShadow: pct > 45 ? "0 1px 2px rgba(0,0,0,0.3)" : "none" }}>
                       {pct.toFixed(0)}%
                     </div>
                   </div>
-                  <div>
-                    <strong style={{ fontSize: "1.1rem" }}>{stats.volume.toLocaleString()} L</strong>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                      MP Moyenne : {stats.protein.toFixed(2)} g/L<br/>
-                      MG Moyenne : {stats.fat.toFixed(2)} g/L
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>VOLUME TOTAL</span>
+                    <strong style={{ fontSize: "1.1rem", color: "#0f172a" }}>{stats.volume.toLocaleString()} L</strong>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 4, borderTop: "1px dashed #cbd5e1", paddingTop: 4 }}>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>MP Moy. : <strong>{stats.protein.toFixed(2)}</strong> g/L</span>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>MG Moy. : <strong>{stats.fat.toFixed(2)}</strong> g/L</span>
                     </div>
                   </div>
                 </div>

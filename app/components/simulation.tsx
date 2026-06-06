@@ -7,10 +7,6 @@ import { TLC_TANKS } from "../lib/orderSlice"
 export default function Simulation() {
   const {
     productionStartTime,
-    isSimulating,
-    simulationDone,
-    simulationProgress,
-    simulationStepText,
     simulationResults,
     tlcVolumes,
     tlcMilkTypes
@@ -89,32 +85,15 @@ export default function Simulation() {
           Ce rapport affiche la synthèse des temps métiers multi-commandes optimisés et l&apos;impact cumulatif sur les réservoirs de lait cru (TLC).
         </p>
 
-        {/* State 1: Simulation is running */}
-        {isSimulating && (
-          <div style={{ marginTop: 16, padding: "20px", backgroundColor: "#f8fafc", borderRadius: "12px", border: "1px solid var(--border-color)", textAlign: "center" }}>
-            <div className="simulation-step-status" style={{ fontSize: "1.1rem" }}>{simulationStepText}</div>
-            <div className="simulation-progress-container" style={{ maxWidth: "500px", margin: "16px auto 0 auto" }}>
-              <div className="simulation-progress-bar" style={{ width: `${simulationProgress}%` }}></div>
-            </div>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: 12 }}>
-              Calcul d&apos;ordonnancement en cours... Veuillez patienter.
-            </p>
-          </div>
-        )}
-
-        {/* State 2: No simulation has been run yet */}
-        {!simulationDone && !isSimulating && (
+        {(!simulationResults || Object.keys(simulationResults.commandsResults).length === 0) ? (
           <div style={{ padding: "30px 20px", textAlign: "center", backgroundColor: "#f8fafc", borderRadius: "12px", border: "1px dashed var(--border-color)", marginTop: 8 }}>
             <span style={{ fontSize: "2rem" }}>📊</span>
             <h4 style={{ margin: "12px 0 6px 0", color: "#334155" }}>Aucun rapport disponible</h4>
             <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "400px", margin: "0 auto" }}>
-              Veuillez configurer vos commandes et cliquer sur le bouton <strong>&quot;Lancer la simulation&quot;</strong> au-dessus du planning Gantt pour générer le rapport global.
+              Veuillez ajouter des commandes contenant au moins une référence produit pour générer le rapport.
             </p>
           </div>
-        )}
-
-        {/* State 3: Simulation completed */}
-        {simulationDone && !isSimulating && simulationResults && (
+        ) : (
           <div className="sim-results-container">
             
             {/* Command-by-command details & timelines */}

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useSelector, useDispatch } from "react-redux"
 import { RootState } from "./lib/store"
-import { setActiveCommand } from "./lib/orderSlice"
+import { setActiveCommand, completeSimulation } from "./lib/orderSlice"
 import TLC from "./components/tlc"
 import Commande from "./components/commande"
 import Osmose from "./components/osmose"
@@ -15,8 +15,12 @@ import Simulation from "./components/simulation"
 
 export default function Home() {
   const dispatch = useDispatch()
-  const { commands, activeCommandId } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"tlc" | "commandes" | "production" | "lancement" | "simulation">("tlc")
+  const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
+  const [activeTab, setActiveTab] = useState<"tlc" | "commandes" | "production" | "lancement" | "simulation">("commandes")
+
+  useEffect(() => {
+    dispatch(completeSimulation())
+  }, [commands, tlcBatches, needs48hWash, needsC3Wash, dispatch])
 
   const handleTabChange = (tab: "tlc" | "commandes" | "production" | "lancement" | "simulation") => {
     setActiveTab(tab)
@@ -81,30 +85,6 @@ export default function Home() {
       >
         <button
           type="button"
-          onClick={() => handleTabChange("tlc")}
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            padding: "12px 16px",
-            borderRadius: "var(--radius-md)",
-            border: "none",
-            fontSize: "0.9rem",
-            fontWeight: activeTab === "tlc" ? "700" : "500",
-            backgroundColor: activeTab === "tlc" ? "var(--primary)" : "transparent",
-            color: activeTab === "tlc" ? "#ffffff" : "var(--text-muted)",
-            cursor: "pointer",
-            transition: "var(--transition)",
-            boxShadow: activeTab === "tlc" ? "var(--shadow-md)" : "none",
-          }}
-        >
-          <span>🥛</span> Réception & Lots TLC
-        </button>
-
-        <button
-          type="button"
           onClick={() => handleTabChange("commandes")}
           style={{
             flex: 1,
@@ -125,6 +105,30 @@ export default function Home() {
           }}
         >
           <span>📋</span> Commandes Clients
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("tlc")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "tlc" ? "700" : "500",
+            backgroundColor: activeTab === "tlc" ? "var(--primary)" : "transparent",
+            color: activeTab === "tlc" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "tlc" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>🥛</span> Réception & Lots TLC
         </button>
 
         <button

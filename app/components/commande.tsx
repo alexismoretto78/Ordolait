@@ -3,7 +3,30 @@
 import { useState } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { addCommand, deleteCommand, setActiveCommand } from "../lib/orderSlice"
+import { addCommand, deleteCommand, setActiveCommand, updateCommandName } from "../lib/orderSlice"
+
+const ALL_PRESETS = [
+  { name: "Nature 125g", grams: 125 },
+  { name: "Nature 140g", grams: 140 },
+  { name: "Fraise 120g", grams: 120 },
+  { name: "Fraise 125g", grams: 125 },
+  { name: "Abricot 120g", grams: 120 },
+  { name: "Framboise 120g", grams: 120 },
+  { name: "Vanille 125g", grams: 125 },
+  { name: "Citron 125g", grams: 125 },
+  { name: "Myrtille 120g", grams: 120 },
+  { name: "Skyr Nature 125g", grams: 125 },
+  { name: "Skyr Nature 140g", grams: 140 },
+  { name: "Skyr Nature 400g", grams: 400 },
+  { name: "Skyr Nature 500g", grams: 500 },
+  { name: "Skyr Fraise 120g", grams: 120 },
+  { name: "Skyr Vanille 125g", grams: 125 },
+  { name: "Skyr Myrtille 120g", grams: 120 },
+  { name: "Skyr Abricot 120g", grams: 120 },
+  { name: "Baiko", grams: 105 },
+  { name: "Val de Praz", grams: 105 },
+  { name: "MDD", grams: 105 }
+]
 
 export default function Commande() {
   const dispatch = useDispatch()
@@ -88,8 +111,30 @@ export default function Commande() {
                     }}
                   >
                     <div>
-                      <h4 style={{ margin: "0 0 4px 0", color: isActive ? "var(--primary)" : "var(--text-main)" }}>
-                        {cmd.name} {isUpcoming && "(À venir)"}
+                      <h4 style={{ margin: "0 0 4px 0", color: isActive ? "var(--primary)" : "var(--text-main)", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="text"
+                          value={cmd.name}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => dispatch(updateCommandName({ id: cmd.id, name: e.target.value }))}
+                          style={{
+                            border: "1px dashed transparent",
+                            borderBottom: "1px dashed var(--border-color)",
+                            background: "transparent",
+                            color: "inherit",
+                            fontWeight: "inherit",
+                            fontSize: "inherit",
+                            fontFamily: "inherit",
+                            padding: "2px 4px",
+                            outline: "none",
+                            width: "auto",
+                            minWidth: "200px"
+                          }}
+                          onFocus={(e) => { e.target.style.border = "1px dashed var(--primary)"; e.target.style.borderBottom = "1px dashed var(--primary)" }}
+                          onBlur={(e) => { e.target.style.border = "1px dashed transparent"; e.target.style.borderBottom = "1px dashed var(--border-color)" }}
+                          title="Cliquez pour renommer la commande"
+                        />
+                        {isUpcoming && <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: "normal" }}>(À venir)</span>}
                       </h4>
                       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
                         <span><strong>Début :</strong> {cmd.startDate ? new Date(cmd.startDate).toLocaleString() : "Non défini"}</span>
@@ -109,18 +154,35 @@ export default function Commande() {
                       </div>
                     </div>
 
-                    {commands.length > 1 && (
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          dispatch(deleteCommand(cmd.id))
+                          if (confirm("Valider la fin de cette commande ? Elle sera supprimée et le planning mis à jour.")) {
+                            dispatch(deleteCommand(cmd.id))
+                          }
+                        }}
+                        className="btn btn-primary"
+                        style={{ padding: "6px 12px", fontSize: "0.85rem", backgroundColor: "var(--success)" }}
+                        title="Valider que la production est terminée"
+                      >
+                        ✅ Terminer
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm("Supprimer cette commande ?")) {
+                            dispatch(deleteCommand(cmd.id))
+                          }
                         }}
                         className="btn btn-secondary"
-                        style={{ color: "var(--danger)", border: "none", background: "none", fontSize: "1.2rem" }}
+                        style={{ color: "var(--danger)", border: "none", background: "none", fontSize: "1.2rem", padding: "4px" }}
+                        title="Supprimer la commande"
                       >
                         ✕
                       </button>
-                    )}
+                    </div>
                   </div>
                 )
               })}
@@ -157,14 +219,23 @@ export default function Commande() {
 
             <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
               Référence du produit
-              <input 
-                type="text" 
+              <select 
                 value={newCmdRef} 
-                onChange={(e) => setNewCmdRef(e.target.value)}
+                onChange={(e) => {
+                  setNewCmdRef(e.target.value)
+                  const preset = ALL_PRESETS.find(p => p.name === e.target.value)
+                  if (preset) {
+                    setNewCmdGrams(preset.grams.toString())
+                  }
+                }}
                 required
-                placeholder="Ex: Baiko Nature, Skyr..."
                 style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-              />
+              >
+                <option value="" disabled>-- Sélectionner une référence --</option>
+                {ALL_PRESETS.map(p => (
+                  <option key={p.name} value={p.name}>{p.name}</option>
+                ))}
+              </select>
             </label>
 
             <div style={{ display: "flex", gap: "16px" }}>

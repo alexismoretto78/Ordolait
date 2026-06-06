@@ -821,46 +821,40 @@ export const runMultiCommandSimulation = (
 
   const simStartMs = config?.productionStartTime ? new Date(config.productionStartTime).getTime() : Date.now()
 
-  const globalGroups = {
-    skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
-  }
+  const readyTanks: { [type: string]: { cfName: string, readyTime: number, volume: number }[] } = {}
+  const typesToProduce: any[] = []
 
   commands.forEach(cmd => {
+    const groups = {
+      skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+      baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+      vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+      nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
+    }
+
     cmd.references.forEach(r => {
       const mass = (r.potsQty * r.gramPerPot) / 1000
       const name = r.name.toLowerCase()
       if (name.includes("skyr")) {
-        globalGroups.skyr.whiteMassKg += mass
-        globalGroups.skyr.refs.push({ cmd, ref: r })
+        groups.skyr.whiteMassKg += mass
+        groups.skyr.refs.push({ cmd, ref: r })
       } else if (name.includes("baiko") || name.includes("mdd")) {
-        globalGroups.baiko_mdd.whiteMassKg += mass / 1.05
-        globalGroups.baiko_mdd.refs.push({ cmd, ref: r })
+        groups.baiko_mdd.whiteMassKg += mass / 1.05
+        groups.baiko_mdd.refs.push({ cmd, ref: r })
       } else if (name.includes("val de praz") || name.includes("vdp")) {
-        globalGroups.vdp.whiteMassKg += mass / 1.05
-        globalGroups.vdp.refs.push({ cmd, ref: r })
+        groups.vdp.whiteMassKg += mass / 1.05
+        groups.vdp.refs.push({ cmd, ref: r })
       } else {
-        globalGroups.nature.whiteMassKg += mass
-        globalGroups.nature.refs.push({ cmd, ref: r })
+        groups.nature.whiteMassKg += mass
+        groups.nature.refs.push({ cmd, ref: r })
       }
     })
+
+    if (groups.skyr.whiteMassKg > 0) typesToProduce.push({ key: `skyr-${cmd.id}`, name: cmd.name, ...groups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true })
+    if (groups.baiko_mdd.whiteMassKg > 0) typesToProduce.push({ key: `baiko_mdd-${cmd.id}`, name: cmd.name, ...groups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false })
+    if (groups.vdp.whiteMassKg > 0) typesToProduce.push({ key: `vdp-${cmd.id}`, name: cmd.name, ...groups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false })
+    if (groups.nature.whiteMassKg > 0) typesToProduce.push({ key: `nature-${cmd.id}`, name: cmd.name, ...groups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false })
   })
-
-  const readyTanks: { [type: string]: { cfName: string, readyTime: number, volume: number }[] } = {
-    skyr: [],
-    baiko_mdd: [],
-    vdp: [],
-    nature: []
-  }
-
-  const typesToProduce = [
-    { key: "skyr", ...globalGroups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true },
-    { key: "baiko_mdd", ...globalGroups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false },
-    { key: "vdp", ...globalGroups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false },
-    { key: "nature", ...globalGroups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false },
-  ]
 
   const drawMilk = (reqVol: number, preferredTypes: MilkType[]) => {
     let remainingToDraw = reqVol
@@ -949,7 +943,7 @@ export const runMultiCommandSimulation = (
 
     // Calculate total emptying time dynamically based on the exact packaging speeds for this group's references
     let totalGroupEmptyMinutes = 0
-    group.refs.forEach(({ cmd, ref }) => {
+    group.refs.forEach(({ cmd, ref }: { cmd: Command, ref: ProductReference }) => {
       let mass = (ref.potsQty * ref.gramPerPot) / 1000
       const dest = cmd.refDestinations?.[ref.id] || "both"
 
@@ -993,10 +987,15 @@ export const runMultiCommandSimulation = (
       const transferEnd = transferStart + transferDuration
       timeTransferFree = transferEnd
       // tlsAvailableAt will be updated after the TLS is washed (after osmosis)
+      
+      const currentCmdId = group.refs[0].cmd.id
+      const res = commandsResults[currentCmdId]
+      if (res.transferStart === 0 || transferStart < res.transferStart) res.transferStart = transferStart
+      res.transferEnd = Math.max(res.transferEnd, transferEnd)
 
       ganttTasks.push({
         key: `transfer-${group.key}-${Date.now()}-${Math.random()}`,
-        label: `Prod Cont. (${group.key}) : Transfert TLC ➔ ${availableTLS}`,
+        label: `${group.name} : Transfert TLC ➔ ${availableTLS}`,
         startMinute: transferStart,
         durationMinutes: transferDuration,
         color: getNextColor("transfer"),
@@ -1047,9 +1046,12 @@ export const runMultiCommandSimulation = (
       timeOsmosisFree = osmoseEnd
       osmosisCount++
 
+      if (res.osmoseStart === 0 || osmoseStart < res.osmoseStart) res.osmoseStart = osmoseStart
+      res.osmoseEnd = Math.max(res.osmoseEnd, osmoseEnd)
+
       ganttTasks.push({
         key: `osmose-${group.key}-${Date.now()}-${Math.random()}`,
-        label: `Prod Cont. (${group.key}) : Osmose ${availableTLS}`,
+        label: `${group.name} : Osmose ${availableTLS}`,
         startMinute: osmoseStart,
         durationMinutes: osmoseDuration,
         color: getNextColor("osmose"),
@@ -1096,9 +1098,14 @@ export const runMultiCommandSimulation = (
       timePowderFree = pastoStart - powderDuration
       pastoCount++
 
+      if (res.powderStart === 0 || timePowderFree < res.powderStart) res.powderStart = timePowderFree
+      res.powderEnd = Math.max(res.powderEnd, timePowderFree + powderDuration)
+      if (res.pastoStart === 0 || pastoStart < res.pastoStart) res.pastoStart = pastoStart
+      res.pastoEnd = Math.max(res.pastoEnd, pastoEnd)
+
       ganttTasks.push({
         key: `pasto-${group.key}-${Date.now()}-${Math.random()}`,
-        label: `Prod Cont. (${group.key}) : Poudrage + Pasto`,
+        label: `${group.name} : Poudrage + Pasto`,
         startMinute: timePowderFree,
         durationMinutes: powderDuration + pastoDuration,
         color: getNextColor("pasto"),
@@ -1141,20 +1148,28 @@ export const runMultiCommandSimulation = (
 
         ganttTasks.push({
           key: `maturation-${cfTank.name}-${Date.now()}-${Math.random()}`,
-          label: `Maturation ${cfTank.name} (${group.key})`,
+          label: `Maturation ${cfTank.name} (${group.name})`,
           startMinute: maturationStart,
           durationMinutes: 360,
           color: getNextColor("maturation"),
         })
 
+        if (!readyTanks[group.key]) readyTanks[group.key] = []
         readyTanks[group.key].push({ cfName: cfTank.name, readyTime: maturationEnd, volume: fillAmount })
+        
+        if (res.maturationStart === 0 || maturationStart < res.maturationStart) {
+          res.maturationStart = maturationStart
+          res.firstTankName = cfTank.name
+        }
+        res.maturationEnd = Math.max(res.maturationEnd, maturationEnd)
+        res.firstTankMaturationEnd = res.maturationEnd
       }
     }
 
     // Now immediately empty the tanks for this group
-    const tanks = readyTanks[group.key].sort((a, b) => a.readyTime - b.readyTime)
+    const tanks = readyTanks[group.key]?.sort((a: any, b: any) => a.readyTime - b.readyTime) || []
 
-    group.refs.forEach(({ cmd, ref }) => {
+    group.refs.forEach(({ cmd, ref }: { cmd: Command, ref: ProductReference }) => {
       let refVol = (ref.potsQty * ref.gramPerPot) / 1000
       const dest = cmd.refDestinations?.[ref.id] || "both"
       const customPots = cmd.refPotsLaunched?.[ref.id]
@@ -1346,6 +1361,9 @@ export const runMultiCommandSimulation = (
             cfAvailableAt[t.cfName] = washEnd
             cfEmptyTimes[t.cfName] = washEnd
           }
+          if (t.cfName === commandsResults[cmd.id].firstTankName) {
+            commandsResults[cmd.id].firstTankEmptyEnd = chunkEnd
+          }
         }
       }
 
@@ -1523,13 +1541,15 @@ const orderSlice = createSlice({
       state.simulationDone = false
     },
     deleteCommand(state, action: PayloadAction<string>) {
-      if (state.commands.length <= 1) return
-
       const toDelete = action.payload
       state.commands = state.commands.filter(c => c.id !== toDelete)
 
-      if (state.activeCommandId === toDelete) {
-        state.activeCommandId = state.commands[0].id
+      if (state.commands.length > 0) {
+        if (state.activeCommandId === toDelete) {
+          state.activeCommandId = state.commands[0].id
+        }
+      } else {
+        state.activeCommandId = ""
       }
       syncActiveCommandToRoot(state)
       state.simulationDone = false

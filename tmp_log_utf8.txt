@@ -1,0 +1,3020 @@
+﻿commit e5e6ab56a4fe41a5a30d0b11039d5ea5a2f6acc6
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Fri Jun 5 08:21:12 2026 +0200
+
+    refonte de la r├⌐ception des commande et ajout de la r├⌐ception de lait et gestion des TLC
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 1d21343..b0ea257 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -1,450 +1,204 @@
+ "use client"
+ 
+-import { useEffect, useState } from "react"
++import { useState } from "react"
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+-import {
+-  addCommand,
+-  deleteCommand,
+-  setActiveCommand,
+-  setProductionStartTime,
+-  addReference,
+-  updateReference,
+-  deleteReference,
+-  setSkyrDirectPasto,
+-  updateCommandName
+-} from "../lib/orderSlice"
+-
+-const ALL_PRESETS = [
+-  { name: "Skyr", grams: 105 },
+-  { name: "Baiko", grams: 105 },
+-  { name: "Val de Praz", grams: 105 },
+-  { name: "Nature", grams: 105 },
+-  { name: "MDD", grams: 105 }
+-]
++import { addCommand, deleteCommand, setActiveCommand } from "../lib/orderSlice"
+ 
+ export default function Commande() {
+   const dispatch = useDispatch()
+-  const { commands, activeCommandId, productionStartTime, isSimulating } = useSelector(
+-    (state: RootState) => state.order
+-  )
+-
+-  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
+-
+-  const hasSkyr = activeCommand ? activeCommand.references.some(r => r.name.toLowerCase().includes("skyr")) : false
+-  const hasClassic = activeCommand ? activeCommand.references.some(r => !r.name.toLowerCase().includes("skyr")) : false
+-
+-  useEffect(() => {
+-    if (!productionStartTime) {
+-      const now = new Date()
+-      const offset = now.getTimezoneOffset()
+-      const localNow = new Date(now.getTime() - offset * 60 * 1000)
+-      dispatch(setProductionStartTime(localNow.toISOString().slice(0, 16)))
+-    }
+-  }, [productionStartTime, dispatch])
+-
+-  // Track local input values to avoid dispatch lag during fast typing
+-  const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
+-  const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
+-  const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
+-
+-
+-  const [editingCommandId, setEditingCommandId] = useState<string | null>(null)
+-  const [editingCommandName, setEditingCommandName] = useState<string>("")
+-
+-  // Initialize and synchronize local values when command or references change
+-  useEffect(() => {
+-    if (activeCommand) {
+-      const names: typeof localRefNames = {}
+-      const pots: typeof localRefPots = {}
+-      const grams: typeof localRefGrams = {}
+-
+-      activeCommand.references.forEach(ref => {
+-        names[ref.id] = ref.name
+-        pots[ref.id] = ref.potsQty.toString()
+-        grams[ref.id] = ref.gramPerPot.toString()
+-      })
+-
+-      setLocalRefNames(names)
+-      setLocalRefPots(pots)
+-      setLocalRefGrams(grams)
+-    }
+-  }, [activeCommandId, activeCommand?.references])
+-
+-  const handleUpdateRef = (refId: string, field: "name" | "potsQty" | "gramPerPot", valueStr: string) => {
+-    let parsedValue: any = valueStr
+-
+-    if (field === "name") {
+-      setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
+-
+-      // Check if manually typed name matches any preset to auto-set format (grams)
+-      const matched = ALL_PRESETS.find(p => p.name.toLowerCase() === valueStr.trim().toLowerCase())
+-      if (matched) {
+-        setLocalRefGrams(prev => ({ ...prev, [refId]: matched.grams.toString() }))
+-        dispatch(updateReference({
+-          cmdId: activeCommand.id,
+-          refId,
+-          fields: { name: valueStr, gramPerPot: matched.grams }
+-        }))
+-        return
+-      }
+-    } else if (field === "potsQty") {
+-      const cleanVal = valueStr.replace(/[^0-9]/g, "")
+-      setLocalRefPots(prev => ({ ...prev, [refId]: cleanVal }))
+-      parsedValue = Number(cleanVal) || 0
+-    } else if (field === "gramPerPot") {
+-      const cleanVal = valueStr.replace(/[^0-9]/g, "")
+-      setLocalRefGrams(prev => ({ ...prev, [refId]: cleanVal }))
+-      parsedValue = Number(cleanVal) || 0
+-    }
+-
+-    dispatch(updateReference({
+-      cmdId: activeCommand.id,
+-      refId,
+-      fields: { [field]: parsedValue }
+-    }))
+-  }
+-
+-  const handleSelectPredefinedRef = (refId: string, name: string, grams: number) => {
+-    setLocalRefNames(prev => ({ ...prev, [refId]: name }))
+-    setLocalRefGrams(prev => ({ ...prev, [refId]: grams.toString() }))
+-
+-    dispatch(updateReference({
+-      cmdId: activeCommand.id,
+-      refId,
+-      fields: { name, gramPerPot: grams }
++  const { commands, activeCommandId } = useSelector((state: RootState) => state.order)
++
++  const [activeSubTab, setActiveSubTab] = useState<"encours" | "ajouter">("encours")
++
++  // Form states for adding a command
++  const [newCmdStartDate, setNewCmdStartDate] = useState(new Date().toISOString().slice(0, 16))
++  const [newCmdEndDate, setNewCmdEndDate] = useState("")
++  const [newCmdRef, setNewCmdRef] = useState("Baiko Nature")
++  const [newCmdPots, setNewCmdPots] = useState("20000")
++  const [newCmdGrams, setNewCmdGrams] = useState("125")
++
++  const handleAddCommand = (e: React.FormEvent) => {
++    e.preventDefault()
++    dispatch(addCommand({
++      startDate: newCmdStartDate,
++      expectedEndDate: newCmdEndDate,
++      refName: newCmdRef,
++      potsQty: Number(newCmdPots),
++      gramPerPot: Number(newCmdGrams)
+     }))
++    setActiveSubTab("encours")
+   }
+ 
+-  // Calculate total pots quantity for active command
+-  const totalPots = activeCommand.references.reduce((sum, r) => sum + r.potsQty, 0)
++  const nowMs = Date.now()
+ 
+   return (
+     <div className="card">
+-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+-        <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>1. Commandes Clients</h2>
+-        <button
+-          type="button"
+-          onClick={() => dispatch(addCommand())}
+-          className="btn btn-success"
+-          style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+-        >
+-          Γ₧ò Ajouter une commande
+-        </button>
++      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16 }}>
++        <h2 style={{ margin: 0 }}>Gestion des Commandes Produits</h2>
++        
++        <div style={{ display: "flex", gap: "8px" }}>
++          <button
++            type="button"
++            onClick={() => setActiveSubTab("encours")}
++            className={`btn ${activeSubTab === "encours" ? "btn-primary" : "btn-secondary"}`}
++            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
++          >
++            Commandes en cours
++          </button>
++          <button
++            type="button"
++            onClick={() => setActiveSubTab("ajouter")}
++            className={`btn ${activeSubTab === "ajouter" ? "btn-primary" : "btn-secondary"}`}
++            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
++          >
++            Γ₧ò Ajouter une commande
++          </button>
++        </div>
+       </div>
+ 
+-      {/* Command Tabs Selection */}
+-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
+-        {commands.map((cmd) => {
+-          const isActive = cmd.id === activeCommandId
+-          const cmdPots = cmd.references.reduce((s, r) => s + r.potsQty, 0)
+-          return (
+-            <div
+-              key={cmd.id}
+-              onClick={() => {
+-                if (editingCommandId !== cmd.id) {
+-                  dispatch(setActiveCommand(cmd.id))
+-                }
+-              }}
+-              onDoubleClick={(e) => {
+-                e.stopPropagation()
+-                setEditingCommandId(cmd.id)
+-                setEditingCommandName(cmd.name)
+-              }}
+-              style={{
+-                display: "flex",
+-                alignItems: "center",
+-                gap: 8,
+-                padding: "8px 14px",
+-                borderRadius: "var(--radius-md)",
+-                border: `1px solid ${isActive ? "var(--primary)" : "var(--border-color)"}`,
+-                backgroundColor: isActive ? "var(--primary-light)" : "white",
+-                color: isActive ? "var(--primary)" : "var(--text-main)",
+-                fontWeight: isActive ? "700" : "500",
+-                fontSize: "0.85rem",
+-                cursor: "pointer",
+-                transition: "var(--transition)",
+-                whiteSpace: "nowrap",
+-                boxShadow: isActive ? "var(--shadow-sm)" : "none",
+-              }}
+-            >
+-              {editingCommandId === cmd.id ? (
+-                <input
+-                  type="text"
+-                  value={editingCommandName}
+-                  autoFocus
+-                  onChange={(e) => setEditingCommandName(e.target.value)}
+-                  onBlur={() => {
+-                    if (editingCommandName.trim()) {
+-                      dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
+-                    }
+-                    setEditingCommandId(null)
+-                  }}
+-                  onKeyDown={(e) => {
+-                    if (e.key === 'Enter') {
+-                      if (editingCommandName.trim()) {
+-                        dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
+-                      }
+-                      setEditingCommandId(null)
+-                    } else if (e.key === 'Escape') {
+-                      setEditingCommandId(null)
+-                    }
+-                  }}
+-                  style={{
+-                    border: "1px solid var(--primary-border)",
+-                    borderRadius: "4px",
+-                    padding: "2px 6px",
+-                    fontSize: "0.85rem",
+-                    outline: "none",
+-                    width: "120px",
+-                    background: "#fff",
+-                    color: "var(--text-main)",
+-                    fontWeight: "600"
+-                  }}
+-                />
+-              ) : (
+-                <span>{cmd.name}</span>
+-              )}
+-              <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
+-                ({(cmdPots / 1000).toFixed(0)}k pots)
+-              </span>
+-
+-              {commands.length > 1 && (
+-                <button
+-                  type="button"
+-                  onClick={(e) => {
+-                    e.stopPropagation()
+-                    dispatch(deleteCommand(cmd.id))
+-                  }}
+-                  style={{
+-                    border: "none",
+-                    background: "none",
+-                    color: isActive ? "var(--primary)" : "var(--text-muted)",
+-                    cursor: "pointer",
+-                    fontSize: "0.95rem",
+-                    padding: "0 2px",
+-                    display: "flex",
+-                    alignItems: "center",
+-                    transition: "var(--transition)",
+-                  }}
+-                  title="Supprimer la commande"
+-                  onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
+-                  onMouseLeave={(e) => e.currentTarget.style.color = isActive ? "var(--primary)" : "var(--text-muted)"}
+-                >
+-                  Γ£ò
+-                </button>
+-              )}
++      {activeSubTab === "encours" && (
++        <div>
++          {commands.length === 0 ? (
++            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
++              Aucune commande en cours.
+             </div>
+-          )
+-        })}
+-      </div>
+-
+-      <div className="form-grid">
+-
+-        {/* Product References List Table */}
+-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+-            <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+-              R├⌐f├⌐rences Produits de la Commande
+-            </span>
+-
+-            <button
+-              type="button"
+-              onClick={() => dispatch(addReference({ cmdId: activeCommand.id }))}
+-              className="btn btn-secondary"
+-              style={{ padding: "4px 10px", fontSize: "0.75rem", color: "var(--primary)", borderColor: "var(--primary-border)" }}
+-            >
+-              Γ₧ò Ajouter une r├⌐f├⌐rence
+-            </button>
+-          </div>
+-
+-          <div className="table-container" style={{ borderRadius: "var(--radius-md)", overflowX: "auto" }}>
+-            <table className="mobile-responsive-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+-              <thead>
+-                <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
+-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", minWidth: "260px" }}>Nom R├⌐f</th>
+-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "140px" }}>Quantit├⌐ (pots)</th>
+-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "120px" }}>Format (g)</th>
+-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "130px" }}>Masse Blanche</th>
+-                  <th style={{ padding: "10px 14px", width: "50px" }}></th>
+-                </tr>
+-              </thead>
+-              <tbody>
+-                {activeCommand.references.map((ref) => {
+-                  const refPots = Number(localRefPots[ref.id]) || 0
+-                  const refGrams = Number(localRefGrams[ref.id]) || 0
+-                  const massKg = (refPots * refGrams) / 1000
+-
+-                  // Predefined references lists check
+-                  const presets = ALL_PRESETS
+-
+-                  return (
+-                    <tr key={ref.id} className="responsive-tr" style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+-                      <td data-label="Nom R├⌐f" className="responsive-td" style={{ padding: "8px 12px" }}>
+-                        <div style={{ position: "relative", width: "100%" }}>
+-                          <select
+-                            value={localRefNames[ref.id] || ""}
+-                            onChange={(e) => {
+-                              const selectedName = e.target.value
+-                              const preset = ALL_PRESETS.find(p => p.name === selectedName)
+-                              if (preset) {
+-                                handleSelectPredefinedRef(ref.id, preset.name, preset.grams)
+-                              } else {
+-                                handleUpdateRef(ref.id, "name", selectedName)
+-                              }
+-                            }}
+-                            style={{
+-                              width: "100%",
+-                              padding: "8px 32px 8px 12px",
+-                              borderRadius: "var(--radius-sm)",
+-                              border: "1px solid #cbd5e1",
+-                              fontSize: "0.85rem",
+-                              fontWeight: 600,
+-                              outline: "none",
+-                              backgroundColor: "#fff",
+-                              transition: "border-color 0.15s ease-in-out",
+-                              cursor: "pointer",
+-                              appearance: "none",
+-                            }}
+-                          >
+-                            {ALL_PRESETS.some(p => p.name === localRefNames[ref.id]) ? null : (
+-                              <option value={localRefNames[ref.id] || ""} disabled>
+-                                {localRefNames[ref.id] || "Choisir une r├⌐f├⌐rence"}
+-                              </option>
+-                            )}
+-                            {ALL_PRESETS.map(preset => (
+-                              <option key={preset.name} value={preset.name}>
+-                                {preset.name}
+-                              </option>
+-                            ))}
+-                          </select>
+-
+-                          <div style={{
+-                            position: "absolute",
+-                            right: "12px",
+-                            top: "50%",
+-                            transform: "translateY(-50%)",
+-                            pointerEvents: "none",
+-                            color: "var(--text-muted)",
+-                            display: "flex",
+-                            alignItems: "center",
+-                            justifyContent: "center",
+-                          }}>
+-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+-                              <polyline points="6 9 12 15 18 9" />
+-                            </svg>
+-                          </div>
+-                        </div>
+-                      </td>
+-
+-                      <td data-label="Quantit├⌐ (pots)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
+-                        <input
+-                          type="text"
+-                          value={localRefPots[ref.id] || ""}
+-                          onChange={(e) => handleUpdateRef(ref.id, "potsQty", e.target.value)}
+-                          style={{
+-                            width: "100%",
+-                            padding: "6px 10px",
+-                            borderRadius: "4px",
+-                            border: "1px solid #cbd5e1",
+-                            fontSize: "0.85rem",
+-                            fontWeight: 700,
+-                            textAlign: "center"
+-                          }}
+-                        />
+-                      </td>
+-
+-                      <td data-label="Format (g)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
+-                        <input
+-                          type="text"
+-                          value={localRefGrams[ref.id] || ""}
+-                          onChange={(e) => handleUpdateRef(ref.id, "gramPerPot", e.target.value)}
+-                          style={{
+-                            width: "100%",
+-                            padding: "6px 10px",
+-                            borderRadius: "4px",
+-                            border: "1px solid #cbd5e1",
+-                            fontSize: "0.85rem",
+-                            fontWeight: 700,
+-                            textAlign: "center"
+-                          }}
+-                        />
+-                      </td>
+-
+-                      <td data-label="Masse Blanche" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
+-                        {massKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg
+-                      </td>
+-
+-                      <td className="responsive-td-action" style={{ padding: "8px 12px", textAlign: "center" }}>
+-                        {activeCommand.references.length > 1 && (
+-                          <button
+-                            type="button"
+-                            onClick={() => dispatch(deleteReference({ cmdId: activeCommand.id, refId: ref.id }))}
+-                            style={{
+-                              border: "none",
+-                              background: "none",
+-                              color: "var(--text-muted)",
+-                              cursor: "pointer",
+-                              fontSize: "1rem",
+-                              fontWeight: 700
+-                            }}
+-                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
+-                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+-                          >
+-                            Γ£ò
+-                          </button>
+-                        )}
+-                      </td>
+-                    </tr>
+-                  )
+-                })}
+-              </tbody>
+-            </table>
+-          </div>
++          ) : (
++            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
++              {commands.map(cmd => {
++                const isActive = cmd.id === activeCommandId
++                const startMs = new Date(cmd.startDate || 0).getTime()
++                const isUpcoming = startMs > nowMs
++                
++                return (
++                  <div 
++                    key={cmd.id}
++                    onClick={() => dispatch(setActiveCommand(cmd.id))}
++                    style={{
++                      border: `1px solid ${isActive ? "var(--primary)" : "var(--border-color)"}`,
++                      backgroundColor: isActive ? "var(--primary-light)" : (isUpcoming ? "#f8fafc" : "#ffffff"),
++                      opacity: isUpcoming ? 0.65 : 1,
++                      padding: "16px",
++                      borderRadius: "var(--radius-md)",
++                      cursor: "pointer",
++                      display: "flex",
++                      justifyContent: "space-between",
++                      alignItems: "center",
++                      transition: "var(--transition)"
++                    }}
++                  >
++                    <div>
++                      <h4 style={{ margin: "0 0 4px 0", color: isActive ? "var(--primary)" : "var(--text-main)" }}>
++                        {cmd.name} {isUpcoming && "(├Ç venir)"}
++                      </h4>
++                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
++                        <span><strong>D├⌐but :</strong> {cmd.startDate ? new Date(cmd.startDate).toLocaleString() : "Non d├⌐fini"}</span>
++                        <span>
++                          <strong>Fin souhait├⌐e :</strong> {cmd.expectedEndDate ? new Date(cmd.expectedEndDate).toLocaleString() : "Non d├⌐finie"}
++                        </span>
++                        <span>
++                          <strong>Fin calcul├⌐e :</strong> {cmd.calculatedEndDate ? new Date(cmd.calculatedEndDate).toLocaleString() : "En attente"}
++                        </span>
++                      </div>
++                      <div style={{ marginTop: "8px", fontSize: "0.85rem" }}>
++                        {cmd.references.map(r => (
++                          <span key={r.id} style={{ display: "inline-block", marginRight: "12px", background: "#e2e8f0", padding: "2px 8px", borderRadius: "12px" }}>
++                            {r.name} - {r.potsQty} pots ({r.gramPerPot}g)
++                          </span>
++                        ))}
++                      </div>
++                    </div>
++
++                    {commands.length > 1 && (
++                      <button
++                        onClick={(e) => {
++                          e.stopPropagation()
++                          dispatch(deleteCommand(cmd.id))
++                        }}
++                        className="btn btn-secondary"
++                        style={{ color: "var(--danger)", border: "none", background: "none", fontSize: "1.2rem" }}
++                      >
++                        Γ£ò
++                      </button>
++                    )}
++                  </div>
++                )
++              })}
++            </div>
++          )}
+         </div>
+-
+-        {/* Global Production Date/Time start */}
+-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginTop: 8 }}>
+-          <div className="form-group">
+-            <label className="form-label">
+-              Date & Heure globale de d├⌐but de production
+-              <input
+-                type="datetime-local"
+-                value={productionStartTime}
+-                disabled={isSimulating}
+-                onChange={(event) => {
+-                  dispatch(setProductionStartTime(event.target.value))
+-                }}
+-                className="form-input"
++      )}
++
++      {activeSubTab === "ajouter" && (
++        <div style={{ maxWidth: "500px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
++          <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande</h3>
++          <form onSubmit={handleAddCommand} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
++            
++            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
++              Date et heure de d├⌐but
++              <input 
++                type="datetime-local" 
++                value={newCmdStartDate} 
++                onChange={(e) => setNewCmdStartDate(e.target.value)}
++                required
++                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+               />
+             </label>
+-          </div>
+-        </div>
+-
+ 
++            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
++              Date et heure de fin souhait├⌐e
++              <input 
++                type="datetime-local" 
++                value={newCmdEndDate} 
++                onChange={(e) => setNewCmdEndDate(e.target.value)}
++                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
++              />
++            </label>
+ 
++            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
++              R├⌐f├⌐rence du produit
++              <input 
++                type="text" 
++                value={newCmdRef} 
++                onChange={(e) => setNewCmdRef(e.target.value)}
++                required
++                placeholder="Ex: Baiko Nature, Skyr..."
++                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
++              />
++            </label>
+ 
+-        <div className="info-section" style={{ marginTop: 12 }}>
+-          <div className="info-item">
+-            <span className="info-label">Pots totaux command├⌐s</span>
+-            <span className="info-value">{totalPots.toLocaleString()} pots</span>
+-          </div>
+-          <div className="info-item">
+-            <span className="info-label">Masse blanche totale calcul├⌐e</span>
+-            <span className="info-value">{activeCommand?.whiteMassKg?.toFixed(1) || "0.0"} kg</span>
+-          </div>
+-          <div className="info-item">
+-            <span className="info-label">Lait cru active requis (estim├⌐)</span>
+-            <span className="info-value">{activeCommand?.milkReceivedVolume?.toFixed(1) || "0.0"} L</span>
+-          </div>
+-        </div>
++            <div style={{ display: "flex", gap: "16px" }}>
++              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
++                Nombre de pots
++                <input 
++                  type="number" 
++                  value={newCmdPots} 
++                  onChange={(e) => setNewCmdPots(e.target.value)}
++                  required
++                  min="1"
++                  style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
++                />
++              </label>
++
++              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
++                Grammage (g)
++                <input 
++                  type="number" 
++                  value={newCmdGrams} 
++                  onChange={(e) => setNewCmdGrams(e.target.value)}
++                  required
++                  min="1"
++                  style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
++                />
++              </label>
++            </div>
+ 
+-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+-          <span className="status-text" style={{ margin: 0 }}>
+-            Statut commande active : <strong style={{ color: "var(--primary)" }}>{activeCommand?.status?.toUpperCase() || "IDLE"}</strong>
+-          </span>
++            <button type="submit" className="btn btn-success" style={{ marginTop: "10px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
++              Γ£ô Valider la commande
++            </button>
++          </form>
+         </div>
+-      </div>
++      )}
+     </div>
+   )
+ }
+
+commit 573999eae8bdb06b112f137e2d04460f048d5216
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Wed Jun 3 10:02:27 2026 +0200
+
+    ajout de lait par r├⌐f├⌐rence
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 48c1970..1d21343 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -7,14 +7,11 @@ import {
+   addCommand,
+   deleteCommand,
+   setActiveCommand,
+-  setCommandMilkType,
+   setProductionStartTime,
+   addReference,
+   updateReference,
+   deleteReference,
+-  setSkyrMilkType,
+   setSkyrDirectPasto,
+-  MilkType,
+   updateCommandName
+ } from "../lib/orderSlice"
+ 
+
+commit 2e19296bda964a99d4bd3c6c8c92c82c9c6f6894
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Tue Jun 2 22:15:37 2026 +0200
+
+    AJustage des temps pour les lavages de CF et ajout de la quantit├⌐ de sucre dans le volume final
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index c1aba60..48c1970 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -3,10 +3,10 @@
+ import { useEffect, useState } from "react"
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+-import { 
+-  addCommand, 
+-  deleteCommand, 
+-  setActiveCommand, 
++import {
++  addCommand,
++  deleteCommand,
++  setActiveCommand,
+   setCommandMilkType,
+   setProductionStartTime,
+   addReference,
+@@ -14,27 +14,16 @@ import {
+   deleteReference,
+   setSkyrMilkType,
+   setSkyrDirectPasto,
+-  MilkType
++  MilkType,
++  updateCommandName
+ } from "../lib/orderSlice"
+ 
+ const ALL_PRESETS = [
+-  { name: "Nature 125g", grams: 125 },
+-  { name: "Nature 140g", grams: 140 },
+-  { name: "Fraise 120g", grams: 120 },
+-  { name: "Fraise 125g", grams: 125 },
+-  { name: "Abricot 120g", grams: 120 },
+-  { name: "Framboise 120g", grams: 120 },
+-  { name: "Vanille 125g", grams: 125 },
+-  { name: "Citron 125g", grams: 125 },
+-  { name: "Myrtille 120g", grams: 120 },
+-  { name: "Skyr Nature 125g", grams: 125 },
+-  { name: "Skyr Nature 140g", grams: 140 },
+-  { name: "Skyr Nature 400g", grams: 400 },
+-  { name: "Skyr Nature 500g", grams: 500 },
+-  { name: "Skyr Fraise 120g", grams: 120 },
+-  { name: "Skyr Vanille 125g", grams: 125 },
+-  { name: "Skyr Myrtille 120g", grams: 120 },
+-  { name: "Skyr Abricot 120g", grams: 120 },
++  { name: "Skyr", grams: 105 },
++  { name: "Baiko", grams: 105 },
++  { name: "Val de Praz", grams: 105 },
++  { name: "Nature", grams: 105 },
++  { name: "MDD", grams: 105 }
+ ]
+ 
+ export default function Commande() {
+@@ -61,7 +50,10 @@ export default function Commande() {
+   const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
+   const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
+   const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
+-  const [openDropdownRefId, setOpenDropdownRefId] = useState<string | null>(null)
++
++
++  const [editingCommandId, setEditingCommandId] = useState<string | null>(null)
++  const [editingCommandName, setEditingCommandName] = useState<string>("")
+ 
+   // Initialize and synchronize local values when command or references change
+   useEffect(() => {
+@@ -87,7 +79,7 @@ export default function Commande() {
+ 
+     if (field === "name") {
+       setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
+-      
++
+       // Check if manually typed name matches any preset to auto-set format (grams)
+       const matched = ALL_PRESETS.find(p => p.name.toLowerCase() === valueStr.trim().toLowerCase())
+       if (matched) {
+@@ -125,7 +117,6 @@ export default function Commande() {
+       refId,
+       fields: { name, gramPerPot: grams }
+     }))
+-    setOpenDropdownRefId(null)
+   }
+ 
+   // Calculate total pots quantity for active command
+@@ -146,14 +137,23 @@ export default function Commande() {
+       </div>
+ 
+       {/* Command Tabs Selection */}
+-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
++      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
+         {commands.map((cmd) => {
+           const isActive = cmd.id === activeCommandId
+           const cmdPots = cmd.references.reduce((s, r) => s + r.potsQty, 0)
+           return (
+             <div
+               key={cmd.id}
+-              onClick={() => dispatch(setActiveCommand(cmd.id))}
++              onClick={() => {
++                if (editingCommandId !== cmd.id) {
++                  dispatch(setActiveCommand(cmd.id))
++                }
++              }}
++              onDoubleClick={(e) => {
++                e.stopPropagation()
++                setEditingCommandId(cmd.id)
++                setEditingCommandName(cmd.name)
++              }}
+               style={{
+                 display: "flex",
+                 alignItems: "center",
+@@ -171,11 +171,47 @@ export default function Commande() {
+                 boxShadow: isActive ? "var(--shadow-sm)" : "none",
+               }}
+             >
+-              <span>{cmd.name}</span>
++              {editingCommandId === cmd.id ? (
++                <input
++                  type="text"
++                  value={editingCommandName}
++                  autoFocus
++                  onChange={(e) => setEditingCommandName(e.target.value)}
++                  onBlur={() => {
++                    if (editingCommandName.trim()) {
++                      dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
++                    }
++                    setEditingCommandId(null)
++                  }}
++                  onKeyDown={(e) => {
++                    if (e.key === 'Enter') {
++                      if (editingCommandName.trim()) {
++                        dispatch(updateCommandName({ id: cmd.id, name: editingCommandName.trim() }))
++                      }
++                      setEditingCommandId(null)
++                    } else if (e.key === 'Escape') {
++                      setEditingCommandId(null)
++                    }
++                  }}
++                  style={{
++                    border: "1px solid var(--primary-border)",
++                    borderRadius: "4px",
++                    padding: "2px 6px",
++                    fontSize: "0.85rem",
++                    outline: "none",
++                    width: "120px",
++                    background: "#fff",
++                    color: "var(--text-main)",
++                    fontWeight: "600"
++                  }}
++                />
++              ) : (
++                <span>{cmd.name}</span>
++              )}
+               <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
+                 ({(cmdPots / 1000).toFixed(0)}k pots)
+               </span>
+-              
++
+               {commands.length > 1 && (
+                 <button
+                   type="button"
+@@ -207,14 +243,14 @@ export default function Commande() {
+       </div>
+ 
+       <div className="form-grid">
+-        
++
+         {/* Product References List Table */}
+         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+             <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+               R├⌐f├⌐rences Produits de la Commande
+             </span>
+-            
++
+             <button
+               type="button"
+               onClick={() => dispatch(addReference({ cmdId: activeCommand.id }))}
+@@ -225,8 +261,8 @@ export default function Commande() {
+             </button>
+           </div>
+ 
+-          <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", overflowX: "auto" }}>
+-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
++          <div className="table-container" style={{ borderRadius: "var(--radius-md)", overflowX: "auto" }}>
++            <table className="mobile-responsive-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+               <thead>
+                 <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
+                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", minWidth: "260px" }}>Nom R├⌐f</th>
+@@ -246,21 +282,20 @@ export default function Commande() {
+                   const presets = ALL_PRESETS
+ 
+                   return (
+-                    <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+-                      <td style={{ padding: "8px 12px", minWidth: "260px" }}>
++                    <tr key={ref.id} className="responsive-tr" style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
++                      <td data-label="Nom R├⌐f" className="responsive-td" style={{ padding: "8px 12px" }}>
+                         <div style={{ position: "relative", width: "100%" }}>
+-                          <input
+-                            type="text"
+-                            placeholder="Rechercher ou saisir une r├⌐f├⌐rence..."
++                          <select
+                             value={localRefNames[ref.id] || ""}
+-                            onFocus={() => setOpenDropdownRefId(ref.id)}
+-                            onBlur={() => {
+-                              // Delay slightly so that click on dropdown item is registered before closing
+-                              setTimeout(() => {
+-                                setOpenDropdownRefId(current => current === ref.id ? null : current)
+-                              }, 200)
++                            onChange={(e) => {
++                              const selectedName = e.target.value
++                              const preset = ALL_PRESETS.find(p => p.name === selectedName)
++                              if (preset) {
++                                handleSelectPredefinedRef(ref.id, preset.name, preset.grams)
++                              } else {
++                                handleUpdateRef(ref.id, "name", selectedName)
++                              }
+                             }}
+-                            onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
+                             style={{
+                               width: "100%",
+                               padding: "8px 32px 8px 12px",
+@@ -269,113 +304,43 @@ export default function Commande() {
+                               fontSize: "0.85rem",
+                               fontWeight: 600,
+                               outline: "none",
++                              backgroundColor: "#fff",
+                               transition: "border-color 0.15s ease-in-out",
+-                            }}
+-                            onKeyDown={(e) => {
+-                              if (e.key === "Escape") {
+-                                setOpenDropdownRefId(null)
+-                              }
+-                            }}
+-                          />
+-
+-                          <button
+-                            type="button"
+-                            onMouseDown={(e) => {
+-                              e.preventDefault() // Prevents input from losing focus
+-                              setOpenDropdownRefId(current => current === ref.id ? null : ref.id)
+-                            }}
+-                            style={{
+-                              position: "absolute",
+-                              right: "8px",
+-                              top: "50%",
+-                              transform: "translateY(-50%)",
+-                              background: "none",
+-                              border: "none",
+-                              padding: "4px",
+                               cursor: "pointer",
+-                              display: "flex",
+-                              alignItems: "center",
+-                              justifyContent: "center",
+-                              color: "var(--text-muted)",
+-                              transition: "color 0.15s",
++                              appearance: "none",
+                             }}
+-                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--primary)"}
+-                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                           >
+-                            <svg
+-                              width="12"
+-                              height="12"
+-                              viewBox="0 0 24 24"
+-                              fill="none"
+-                              stroke="currentColor"
+-                              strokeWidth="2.5"
+-                              strokeLinecap="round"
+-                              strokeLinejoin="round"
+-                              style={{
+-                                transform: openDropdownRefId === ref.id ? "rotate(180deg)" : "rotate(0deg)",
+-                                transition: "transform 0.2s ease",
+-                              }}
+-                            >
++                            {ALL_PRESETS.some(p => p.name === localRefNames[ref.id]) ? null : (
++                              <option value={localRefNames[ref.id] || ""} disabled>
++                                {localRefNames[ref.id] || "Choisir une r├⌐f├⌐rence"}
++                              </option>
++                            )}
++                            {ALL_PRESETS.map(preset => (
++                              <option key={preset.name} value={preset.name}>
++                                {preset.name}
++                              </option>
++                            ))}
++                          </select>
++
++                          <div style={{
++                            position: "absolute",
++                            right: "12px",
++                            top: "50%",
++                            transform: "translateY(-50%)",
++                            pointerEvents: "none",
++                            color: "var(--text-muted)",
++                            display: "flex",
++                            alignItems: "center",
++                            justifyContent: "center",
++                          }}>
++                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                               <polyline points="6 9 12 15 18 9" />
+                             </svg>
+-                          </button>
+-
+-                          {openDropdownRefId === ref.id && (
+-                            <>
+-                              <div 
+-                                className="ref-dropdown-backdrop" 
+-                                onMouseDown={(e) => {
+-                                  e.preventDefault()
+-                                  setOpenDropdownRefId(null)
+-                                }}
+-                              />
+-                              <div className="ref-dropdown">
+-                                <div className="ref-dropdown-header">
+-                                  <span>Choisir une r├⌐f├⌐rence</span>
+-                                  <button
+-                                    type="button"
+-                                    onMouseDown={(e) => {
+-                                      e.preventDefault()
+-                                      setOpenDropdownRefId(null)
+-                                    }}
+-                                  >
+-                                    Γ£ò
+-                                  </button>
+-                                </div>
+-                                {(() => {
+-                                  const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+-                                  const filtered = presets.filter(p => 
+-                                    p.name.toLowerCase().includes(search)
+-                                  )
+-
+-                                  if (filtered.length === 0) {
+-                                    return (
+-                                      <div className="ref-dropdown-empty">
+-                                        Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
+-                                      </div>
+-                                    )
+-                                  }
+-
+-                                  return filtered.map((preset) => (
+-                                    <div
+-                                      key={preset.name}
+-                                      onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+-                                      className="ref-dropdown-item"
+-                                    >
+-                                      <span>{preset.name}</span>
+-                                      <span className="ref-dropdown-badge">
+-                                        {preset.grams}g
+-                                      </span>
+-                                    </div>
+-                                  ))
+-                                })()}
+-                              </div>
+-                            </>
+-                          )}
++                          </div>
+                         </div>
+                       </td>
+-                      
+-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++
++                      <td data-label="Quantit├⌐ (pots)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
+                         <input
+                           type="text"
+                           value={localRefPots[ref.id] || ""}
+@@ -391,8 +356,8 @@ export default function Commande() {
+                           }}
+                         />
+                       </td>
+-                      
+-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++
++                      <td data-label="Format (g)" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center" }}>
+                         <input
+                           type="text"
+                           value={localRefGrams[ref.id] || ""}
+@@ -409,11 +374,11 @@ export default function Commande() {
+                         />
+                       </td>
+ 
+-                      <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
++                      <td data-label="Masse Blanche" className="responsive-td" style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
+                         {massKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg
+                       </td>
+ 
+-                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++                      <td className="responsive-td-action" style={{ padding: "8px 12px", textAlign: "center" }}>
+                         {activeCommand.references.length > 1 && (
+                           <button
+                             type="button"
+@@ -461,120 +426,7 @@ export default function Commande() {
+ 
+ 
+ 
+-        {/* Command Milk Type Selector */}
+-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 4 }}>
+-          {hasClassic && (
+-            <div className="form-group">
+-              <span className="form-label" style={{ marginBottom: 6 }}>
+-                ≡ƒÑ¢ Type de lait requis pour le(s) produit(s) classique(s) (ex: yaourts)
+-              </span>
+-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+-                {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+-                  const isSelected = (activeCommand.milkType || "bio") === type
+-                  const colors = {
+-                    bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
+-                    fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
+-                    savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
+-                    montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
+-                  }[type]
+-
+-                  return (
+-                    <button
+-                      key={type}
+-                      type="button"
+-                      onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+-                      style={{
+-                        padding: "10px 4px",
+-                        borderRadius: "var(--radius-sm)",
+-                        fontSize: "0.8rem",
+-                        fontWeight: isSelected ? "800" : "600",
+-                        border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+-                        background: isSelected ? colors.bg : "#ffffff",
+-                        color: isSelected ? colors.color : "var(--text-muted)",
+-                        cursor: "pointer",
+-                        transition: "var(--transition)",
+-                        textAlign: "center"
+-                      }}
+-                    >
+-                      {colors.label}
+-                    </button>
+-                  )
+-                })}
+-              </div>
+-            </div>
+-          )}
+-
+-          {hasSkyr && (
+-            <div className="form-group">
+-              <span className="form-label" style={{ marginBottom: 6 }}>
+-                ≡ƒÑú Recette & Lait requis pour le Skyr
+-              </span>
+-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+-                {([
+-                  { key: "fcv3", label: "≡ƒº¬ Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
+-                  { key: "ecreme_savoie", label: "≡ƒÅö∩╕Å ├ëcr├⌐m├⌐ Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
+-                  { key: "ecreme_montagne", label: "Γ¢░∩╕Å ├ëcr├⌐m├⌐ Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
+-                ] as const).map((opt) => {
+-                  const isSelected = activeCommand.skyrMilkType === opt.key
+-                  return (
+-                    <button
+-                      key={opt.key}
+-                      type="button"
+-                      onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
+-                      style={{
+-                        padding: "10px 4px",
+-                        borderRadius: "var(--radius-sm)",
+-                        fontSize: "0.78rem",
+-                        fontWeight: isSelected ? "800" : "600",
+-                        border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
+-                        background: isSelected ? opt.bg : "#ffffff",
+-                        color: isSelected ? opt.color : "var(--text-muted)",
+-                        cursor: "pointer",
+-                        transition: "var(--transition)",
+-                        textAlign: "center"
+-                      }}
+-                    >
+-                      {opt.label}
+-                    </button>
+-                  )
+-                })}
+-              </div>
+-            </div>
+-          )}
+-        </div>
+-
+-        {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
+-        {hasSkyr && activeCommand.skyrMilkType === "fcv3" && (
+-          <div style={{ 
+-            gridColumn: "span 2",
+-            display: "flex",
+-            alignItems: "center",
+-            gap: 10,
+-            backgroundColor: "rgba(37, 99, 235, 0.05)",
+-            padding: "10px 16px",
+-            borderRadius: "var(--radius-md)",
+-            border: "1px solid rgba(37, 99, 235, 0.15)",
+-            marginTop: 4
+-          }}>
+-            <input
+-              type="checkbox"
+-              id="directPasto"
+-              checked={activeCommand.skyrDirectPasto || false}
+-              onChange={(e) => dispatch(setSkyrDirectPasto({ id: activeCommand.id, direct: e.target.checked }))}
+-              style={{
+-                width: "18px",
+-                height: "18px",
+-                cursor: "pointer",
+-                accentColor: "var(--primary)"
+-              }}
+-            />
+-            <label htmlFor="directPasto" style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", cursor: "pointer" }}>
+-              ΓÜí Pasteurisation en direct (sans passer par un TLS)
+-            </label>
+-          </div>
+-        )}
+ 
+-        {/* Global Totals Summary */}
+         <div className="info-section" style={{ marginTop: 12 }}>
+           <div className="info-item">
+             <span className="info-label">Pots totaux command├⌐s</span>
+
+commit 8399da1c8418b7b9d1c174091f590be2da7ff3f3
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Tue Jun 2 06:38:34 2026 +0200
+
+    rectif css
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index d22bf7c..c1aba60 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -45,6 +45,9 @@ export default function Commande() {
+ 
+   const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
+ 
++  const hasSkyr = activeCommand ? activeCommand.references.some(r => r.name.toLowerCase().includes("skyr")) : false
++  const hasClassic = activeCommand ? activeCommand.references.some(r => !r.name.toLowerCase().includes("skyr")) : false
++
+   useEffect(() => {
+     if (!productionStartTime) {
+       const now = new Date()
+@@ -459,80 +462,89 @@ export default function Commande() {
+ 
+ 
+         {/* Command Milk Type Selector */}
+-        <div className="form-group" style={{ marginTop: 4 }}>
+-          <span className="form-label" style={{ marginBottom: 6 }}>
+-            {activeCommand.isSkyr ? "Recette & Lait requis" : "Type de lait requis pour cette commande"}
+-          </span>
+-          {!activeCommand.isSkyr ? (
+-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+-              {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+-                const isSelected = (activeCommand.milkType || "bio") === type
+-                const colors = {
+-                  bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
+-                  fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
+-                  savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
+-                  montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
+-                }[type]
+-
+-                return (
+-                  <button
+-                    key={type}
+-                    type="button"
+-                    onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+-                    style={{
+-                      padding: "10px 4px",
+-                      borderRadius: "var(--radius-sm)",
+-                      fontSize: "0.8rem",
+-                      fontWeight: isSelected ? "800" : "600",
+-                      border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+-                      background: isSelected ? colors.bg : "#ffffff",
+-                      color: isSelected ? colors.color : "var(--text-muted)",
+-                      cursor: "pointer",
+-                      transition: "var(--transition)",
+-                      textAlign: "center"
+-                    }}
+-                  >
+-                    {colors.label}
+-                  </button>
+-                )
+-              })}
++        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 4 }}>
++          {hasClassic && (
++            <div className="form-group">
++              <span className="form-label" style={{ marginBottom: 6 }}>
++                ≡ƒÑ¢ Type de lait requis pour le(s) produit(s) classique(s) (ex: yaourts)
++              </span>
++              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
++                {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
++                  const isSelected = (activeCommand.milkType || "bio") === type
++                  const colors = {
++                    bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
++                    fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
++                    savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
++                    montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
++                  }[type]
++
++                  return (
++                    <button
++                      key={type}
++                      type="button"
++                      onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
++                      style={{
++                        padding: "10px 4px",
++                        borderRadius: "var(--radius-sm)",
++                        fontSize: "0.8rem",
++                        fontWeight: isSelected ? "800" : "600",
++                        border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
++                        background: isSelected ? colors.bg : "#ffffff",
++                        color: isSelected ? colors.color : "var(--text-muted)",
++                        cursor: "pointer",
++                        transition: "var(--transition)",
++                        textAlign: "center"
++                      }}
++                    >
++                      {colors.label}
++                    </button>
++                  )
++                })}
++              </div>
+             </div>
+-          ) : (
+-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+-              {([
+-                { key: "fcv3", label: "≡ƒº¬ Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
+-                { key: "ecreme_savoie", label: "≡ƒÅö∩╕Å ├ëcr├⌐m├⌐ Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
+-                { key: "ecreme_montagne", label: "Γ¢░∩╕Å ├ëcr├⌐m├⌐ Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
+-              ] as const).map((opt) => {
+-                const isSelected = activeCommand.skyrMilkType === opt.key
+-                return (
+-                  <button
+-                    key={opt.key}
+-                    type="button"
+-                    onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
+-                    style={{
+-                      padding: "10px 4px",
+-                      borderRadius: "var(--radius-sm)",
+-                      fontSize: "0.78rem",
+-                      fontWeight: isSelected ? "800" : "600",
+-                      border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
+-                      background: isSelected ? opt.bg : "#ffffff",
+-                      color: isSelected ? opt.color : "var(--text-muted)",
+-                      cursor: "pointer",
+-                      transition: "var(--transition)",
+-                      textAlign: "center"
+-                    }}
+-                  >
+-                    {opt.label}
+-                  </button>
+-                )
+-              })}
++          )}
++
++          {hasSkyr && (
++            <div className="form-group">
++              <span className="form-label" style={{ marginBottom: 6 }}>
++                ≡ƒÑú Recette & Lait requis pour le Skyr
++              </span>
++              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
++                {([
++                  { key: "fcv3", label: "≡ƒº¬ Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
++                  { key: "ecreme_savoie", label: "≡ƒÅö∩╕Å ├ëcr├⌐m├⌐ Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
++                  { key: "ecreme_montagne", label: "Γ¢░∩╕Å ├ëcr├⌐m├⌐ Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
++                ] as const).map((opt) => {
++                  const isSelected = activeCommand.skyrMilkType === opt.key
++                  return (
++                    <button
++                      key={opt.key}
++                      type="button"
++                      onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
++                      style={{
++                        padding: "10px 4px",
++                        borderRadius: "var(--radius-sm)",
++                        fontSize: "0.78rem",
++                        fontWeight: isSelected ? "800" : "600",
++                        border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
++                        background: isSelected ? opt.bg : "#ffffff",
++                        color: isSelected ? opt.color : "var(--text-muted)",
++                        cursor: "pointer",
++                        transition: "var(--transition)",
++                        textAlign: "center"
++                      }}
++                    >
++                      {opt.label}
++                    </button>
++                  )
++                })}
++              </div>
+             </div>
+           )}
+         </div>
+ 
+         {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
+-        {activeCommand.isSkyr && activeCommand.skyrMilkType === "fcv3" && (
++        {hasSkyr && activeCommand.skyrMilkType === "fcv3" && (
+           <div style={{ 
+             gridColumn: "span 2",
+             display: "flex",
+
+commit 928c85854e1446c1a8a40886202b995c1ac41d77
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Tue Jun 2 05:53:57 2026 +0200
+
+    style: augmente la largeur du champ r├⌐f├⌐rence sur mobile dans le tableau de commande
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 349738d..d22bf7c 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -226,7 +226,7 @@ export default function Commande() {
+             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+               <thead>
+                 <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
+-                  <th style={{ padding: "10px 14px", color: "var(--text-muted)" }}>Nom R├⌐f</th>
++                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", minWidth: "260px" }}>Nom R├⌐f</th>
+                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "140px" }}>Quantit├⌐ (pots)</th>
+                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "120px" }}>Format (g)</th>
+                   <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "130px" }}>Masse Blanche</th>
+@@ -244,7 +244,7 @@ export default function Commande() {
+ 
+                   return (
+                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+-                      <td style={{ padding: "8px 12px" }}>
++                      <td style={{ padding: "8px 12px", minWidth: "260px" }}>
+                         <div style={{ position: "relative", width: "100%" }}>
+                           <input
+                             type="text"
+
+commit 0335b127c388235ad2fb844a58e8d5707a9ff4a9
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Tue Jun 2 05:48:30 2026 +0200
+
+    rectif css
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 501d2ff..349738d 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -318,70 +318,56 @@ export default function Commande() {
+                           </button>
+ 
+                           {openDropdownRefId === ref.id && (
+-                            <div
+-                              style={{
+-                                position: "absolute",
+-                                top: "100%",
+-                                left: "0",
+-                                right: "0",
+-                                backgroundColor: "white",
+-                                border: "1px solid var(--border-color)",
+-                                borderRadius: "var(--radius-md)",
+-                                boxShadow: "var(--shadow-lg)",
+-                                zIndex: 1000,
+-                                maxHeight: "220px",
+-                                overflowY: "auto",
+-                                marginTop: "4px",
+-                              }}
+-                            >
+-                              {(() => {
+-                                const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+-                                const filtered = presets.filter(p => 
+-                                  p.name.toLowerCase().includes(search)
+-                                )
+-
+-                                if (filtered.length === 0) {
+-                                  return (
+-                                    <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
+-                                      Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
+-                                    </div>
+-                                  )
+-                                }
+-
+-                                return filtered.map((preset) => (
+-                                  <div
+-                                    key={preset.name}
+-                                    onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+-                                    style={{
+-                                      padding: "8px 14px",
+-                                      fontSize: "0.85rem",
+-                                      fontWeight: 500,
+-                                      cursor: "pointer",
+-                                      transition: "background-color 0.15s",
+-                                      borderBottom: "1px solid #f1f5f9",
+-                                      textAlign: "left",
+-                                      display: "flex",
+-                                      justifyContent: "space-between",
+-                                      alignItems: "center",
+-                                      color: "var(--text-main)"
+-                                    }}
+-                                    onMouseEnter={(e) => {
+-                                      e.currentTarget.style.backgroundColor = "var(--primary-light)"
+-                                      e.currentTarget.style.color = "var(--primary)"
+-                                    }}
+-                                    onMouseLeave={(e) => {
+-                                      e.currentTarget.style.backgroundColor = "transparent"
+-                                      e.currentTarget.style.color = "var(--text-main)"
++                            <>
++                              <div 
++                                className="ref-dropdown-backdrop" 
++                                onMouseDown={(e) => {
++                                  e.preventDefault()
++                                  setOpenDropdownRefId(null)
++                                }}
++                              />
++                              <div className="ref-dropdown">
++                                <div className="ref-dropdown-header">
++                                  <span>Choisir une r├⌐f├⌐rence</span>
++                                  <button
++                                    type="button"
++                                    onMouseDown={(e) => {
++                                      e.preventDefault()
++                                      setOpenDropdownRefId(null)
+                                     }}
+                                   >
+-                                    <span>{preset.name}</span>
+-                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
+-                                      {preset.grams}g
+-                                    </span>
+-                                  </div>
+-                                ))
+-                              })()}
+-                            </div>
++                                    Γ£ò
++                                  </button>
++                                </div>
++                                {(() => {
++                                  const search = (localRefNames[ref.id] || "").toLowerCase().trim()
++                                  const filtered = presets.filter(p => 
++                                    p.name.toLowerCase().includes(search)
++                                  )
++
++                                  if (filtered.length === 0) {
++                                    return (
++                                      <div className="ref-dropdown-empty">
++                                        Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
++                                      </div>
++                                    )
++                                  }
++
++                                  return filtered.map((preset) => (
++                                    <div
++                                      key={preset.name}
++                                      onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
++                                      className="ref-dropdown-item"
++                                    >
++                                      <span>{preset.name}</span>
++                                      <span className="ref-dropdown-badge">
++                                        {preset.grams}g
++                                      </span>
++                                    </div>
++                                  ))
++                                })()}
++                              </div>
++                            </>
+                           )}
+                         </div>
+                       </td>
+
+commit e96b1f5f4afcf223a6a70b6a2c6c47462caee2c7
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Sat May 30 13:30:42 2026 +0200
+
+    attente recette
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 88e3569..501d2ff 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -244,102 +244,146 @@ export default function Commande() {
+ 
+                   return (
+                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+-                      <td style={{ padding: "8px 12px", position: "relative" }}>
+-                        <input
+-                          type="text"
+-                          placeholder="Rechercher ou saisir une r├⌐f├⌐rence..."
+-                          value={localRefNames[ref.id] || ""}
+-                          onFocus={() => setOpenDropdownRefId(ref.id)}
+-                          onBlur={() => {
+-                            // Delay slightly so that click on dropdown item is registered before closing
+-                            setTimeout(() => {
+-                              setOpenDropdownRefId(current => current === ref.id ? null : current)
+-                            }, 200)
+-                          }}
+-                          onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
+-                          style={{
+-                            width: "100%",
+-                            padding: "8px 12px",
+-                            borderRadius: "var(--radius-sm)",
+-                            border: "1px solid #cbd5e1",
+-                            fontSize: "0.85rem",
+-                            fontWeight: 600,
+-                            outline: "none",
+-                            transition: "border-color 0.15s ease-in-out",
+-                          }}
+-                          onKeyDown={(e) => {
+-                            if (e.key === "Escape") {
+-                              setOpenDropdownRefId(null)
+-                            }
+-                          }}
+-                        />
++                      <td style={{ padding: "8px 12px" }}>
++                        <div style={{ position: "relative", width: "100%" }}>
++                          <input
++                            type="text"
++                            placeholder="Rechercher ou saisir une r├⌐f├⌐rence..."
++                            value={localRefNames[ref.id] || ""}
++                            onFocus={() => setOpenDropdownRefId(ref.id)}
++                            onBlur={() => {
++                              // Delay slightly so that click on dropdown item is registered before closing
++                              setTimeout(() => {
++                                setOpenDropdownRefId(current => current === ref.id ? null : current)
++                              }, 200)
++                            }}
++                            onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
++                            style={{
++                              width: "100%",
++                              padding: "8px 32px 8px 12px",
++                              borderRadius: "var(--radius-sm)",
++                              border: "1px solid #cbd5e1",
++                              fontSize: "0.85rem",
++                              fontWeight: 600,
++                              outline: "none",
++                              transition: "border-color 0.15s ease-in-out",
++                            }}
++                            onKeyDown={(e) => {
++                              if (e.key === "Escape") {
++                                setOpenDropdownRefId(null)
++                              }
++                            }}
++                          />
+ 
+-                        {openDropdownRefId === ref.id && (
+-                          <div
++                          <button
++                            type="button"
++                            onMouseDown={(e) => {
++                              e.preventDefault() // Prevents input from losing focus
++                              setOpenDropdownRefId(current => current === ref.id ? null : ref.id)
++                            }}
+                             style={{
+                               position: "absolute",
+-                              top: "100%",
+-                              left: "12px",
+-                              right: "12px",
+-                              backgroundColor: "white",
+-                              border: "1px solid var(--border-color)",
+-                              borderRadius: "var(--radius-md)",
+-                              boxShadow: "var(--shadow-lg)",
+-                              zIndex: 1000,
+-                              maxHeight: "220px",
+-                              overflowY: "auto",
+-                              marginTop: "4px",
++                              right: "8px",
++                              top: "50%",
++                              transform: "translateY(-50%)",
++                              background: "none",
++                              border: "none",
++                              padding: "4px",
++                              cursor: "pointer",
++                              display: "flex",
++                              alignItems: "center",
++                              justifyContent: "center",
++                              color: "var(--text-muted)",
++                              transition: "color 0.15s",
+                             }}
++                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--primary)"}
++                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                           >
+-                            {(() => {
+-                              const search = (localRefNames[ref.id] || "").toLowerCase().trim()
+-                              const filtered = presets.filter(p => 
+-                                p.name.toLowerCase().includes(search)
+-                              )
+-
+-                              if (filtered.length === 0) {
+-                                return (
+-                                  <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
+-                                    Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
+-                                  </div>
++                            <svg
++                              width="12"
++                              height="12"
++                              viewBox="0 0 24 24"
++                              fill="none"
++                              stroke="currentColor"
++                              strokeWidth="2.5"
++                              strokeLinecap="round"
++                              strokeLinejoin="round"
++                              style={{
++                                transform: openDropdownRefId === ref.id ? "rotate(180deg)" : "rotate(0deg)",
++                                transition: "transform 0.2s ease",
++                              }}
++                            >
++                              <polyline points="6 9 12 15 18 9" />
++                            </svg>
++                          </button>
++
++                          {openDropdownRefId === ref.id && (
++                            <div
++                              style={{
++                                position: "absolute",
++                                top: "100%",
++                                left: "0",
++                                right: "0",
++                                backgroundColor: "white",
++                                border: "1px solid var(--border-color)",
++                                borderRadius: "var(--radius-md)",
++                                boxShadow: "var(--shadow-lg)",
++                                zIndex: 1000,
++                                maxHeight: "220px",
++                                overflowY: "auto",
++                                marginTop: "4px",
++                              }}
++                            >
++                              {(() => {
++                                const search = (localRefNames[ref.id] || "").toLowerCase().trim()
++                                const filtered = presets.filter(p => 
++                                  p.name.toLowerCase().includes(search)
+                                 )
+-                              }
+ 
+-                              return filtered.map((preset) => (
+-                                <div
+-                                  key={preset.name}
+-                                  onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
+-                                  style={{
+-                                    padding: "8px 14px",
+-                                    fontSize: "0.85rem",
+-                                    fontWeight: 500,
+-                                    cursor: "pointer",
+-                                    transition: "background-color 0.15s",
+-                                    borderBottom: "1px solid #f1f5f9",
+-                                    textAlign: "left",
+-                                    display: "flex",
+-                                    justifyContent: "space-between",
+-                                    alignItems: "center",
+-                                    color: "var(--text-main)"
+-                                  }}
+-                                  onMouseEnter={(e) => {
+-                                    e.currentTarget.style.backgroundColor = "var(--primary-light)"
+-                                    e.currentTarget.style.color = "var(--primary)"
+-                                  }}
+-                                  onMouseLeave={(e) => {
+-                                    e.currentTarget.style.backgroundColor = "transparent"
+-                                    e.currentTarget.style.color = "var(--text-main)"
+-                                  }}
+-                                >
+-                                  <span>{preset.name}</span>
+-                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
+-                                    {preset.grams}g
+-                                  </span>
+-                                </div>
+-                              ))
+-                            })()}
+-                          </div>
+-                        )}
++                                if (filtered.length === 0) {
++                                  return (
++                                    <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
++                                      Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
++                                    </div>
++                                  )
++                                }
++
++                                return filtered.map((preset) => (
++                                  <div
++                                    key={preset.name}
++                                    onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
++                                    style={{
++                                      padding: "8px 14px",
++                                      fontSize: "0.85rem",
++                                      fontWeight: 500,
++                                      cursor: "pointer",
++                                      transition: "background-color 0.15s",
++                                      borderBottom: "1px solid #f1f5f9",
++                                      textAlign: "left",
++                                      display: "flex",
++                                      justifyContent: "space-between",
++                                      alignItems: "center",
++                                      color: "var(--text-main)"
++                                    }}
++                                    onMouseEnter={(e) => {
++                                      e.currentTarget.style.backgroundColor = "var(--primary-light)"
++                                      e.currentTarget.style.color = "var(--primary)"
++                                    }}
++                                    onMouseLeave={(e) => {
++                                      e.currentTarget.style.backgroundColor = "transparent"
++                                      e.currentTarget.style.color = "var(--text-main)"
++                                    }}
++                                  >
++                                    <span>{preset.name}</span>
++                                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
++                                      {preset.grams}g
++                                    </span>
++                                  </div>
++                                ))
++                              })()}
++                            </div>
++                          )}
++                        </div>
+                       </td>
+                       
+                       <td style={{ padding: "8px 12px", textAlign: "center" }}>
+
+commit 4c6f3562755fa160039099b44082d449d42efe85
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Fri May 29 21:37:46 2026 +0200
+
+    Ajout de Skyr et ref et ajustement des temps
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 48ceb58..88e3569 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -12,9 +12,31 @@ import {
+   addReference,
+   updateReference,
+   deleteReference,
++  setSkyrMilkType,
++  setSkyrDirectPasto,
+   MilkType
+ } from "../lib/orderSlice"
+ 
++const ALL_PRESETS = [
++  { name: "Nature 125g", grams: 125 },
++  { name: "Nature 140g", grams: 140 },
++  { name: "Fraise 120g", grams: 120 },
++  { name: "Fraise 125g", grams: 125 },
++  { name: "Abricot 120g", grams: 120 },
++  { name: "Framboise 120g", grams: 120 },
++  { name: "Vanille 125g", grams: 125 },
++  { name: "Citron 125g", grams: 125 },
++  { name: "Myrtille 120g", grams: 120 },
++  { name: "Skyr Nature 125g", grams: 125 },
++  { name: "Skyr Nature 140g", grams: 140 },
++  { name: "Skyr Nature 400g", grams: 400 },
++  { name: "Skyr Nature 500g", grams: 500 },
++  { name: "Skyr Fraise 120g", grams: 120 },
++  { name: "Skyr Vanille 125g", grams: 125 },
++  { name: "Skyr Myrtille 120g", grams: 120 },
++  { name: "Skyr Abricot 120g", grams: 120 },
++]
++
+ export default function Commande() {
+   const dispatch = useDispatch()
+   const { commands, activeCommandId, productionStartTime, isSimulating } = useSelector(
+@@ -36,6 +58,7 @@ export default function Commande() {
+   const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
+   const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
+   const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
++  const [openDropdownRefId, setOpenDropdownRefId] = useState<string | null>(null)
+ 
+   // Initialize and synchronize local values when command or references change
+   useEffect(() => {
+@@ -61,6 +84,18 @@ export default function Commande() {
+ 
+     if (field === "name") {
+       setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
++      
++      // Check if manually typed name matches any preset to auto-set format (grams)
++      const matched = ALL_PRESETS.find(p => p.name.toLowerCase() === valueStr.trim().toLowerCase())
++      if (matched) {
++        setLocalRefGrams(prev => ({ ...prev, [refId]: matched.grams.toString() }))
++        dispatch(updateReference({
++          cmdId: activeCommand.id,
++          refId,
++          fields: { name: valueStr, gramPerPot: matched.grams }
++        }))
++        return
++      }
+     } else if (field === "potsQty") {
+       const cleanVal = valueStr.replace(/[^0-9]/g, "")
+       setLocalRefPots(prev => ({ ...prev, [refId]: cleanVal }))
+@@ -78,6 +113,18 @@ export default function Commande() {
+     }))
+   }
+ 
++  const handleSelectPredefinedRef = (refId: string, name: string, grams: number) => {
++    setLocalRefNames(prev => ({ ...prev, [refId]: name }))
++    setLocalRefGrams(prev => ({ ...prev, [refId]: grams.toString() }))
++
++    dispatch(updateReference({
++      cmdId: activeCommand.id,
++      refId,
++      fields: { name, gramPerPot: grams }
++    }))
++    setOpenDropdownRefId(null)
++  }
++
+   // Calculate total pots quantity for active command
+   const totalPots = activeCommand.references.reduce((sum, r) => sum + r.potsQty, 0)
+ 
+@@ -192,22 +239,107 @@ export default function Commande() {
+                   const refGrams = Number(localRefGrams[ref.id]) || 0
+                   const massKg = (refPots * refGrams) / 1000
+ 
++                  // Predefined references lists check
++                  const presets = ALL_PRESETS
++
+                   return (
+                     <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+-                      <td style={{ padding: "8px 12px" }}>
++                      <td style={{ padding: "8px 12px", position: "relative" }}>
+                         <input
+                           type="text"
++                          placeholder="Rechercher ou saisir une r├⌐f├⌐rence..."
+                           value={localRefNames[ref.id] || ""}
++                          onFocus={() => setOpenDropdownRefId(ref.id)}
++                          onBlur={() => {
++                            // Delay slightly so that click on dropdown item is registered before closing
++                            setTimeout(() => {
++                              setOpenDropdownRefId(current => current === ref.id ? null : current)
++                            }, 200)
++                          }}
+                           onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
+                           style={{
+                             width: "100%",
+-                            padding: "6px 10px",
+-                            borderRadius: "4px",
++                            padding: "8px 12px",
++                            borderRadius: "var(--radius-sm)",
+                             border: "1px solid #cbd5e1",
+                             fontSize: "0.85rem",
+                             fontWeight: 600,
++                            outline: "none",
++                            transition: "border-color 0.15s ease-in-out",
++                          }}
++                          onKeyDown={(e) => {
++                            if (e.key === "Escape") {
++                              setOpenDropdownRefId(null)
++                            }
+                           }}
+                         />
++
++                        {openDropdownRefId === ref.id && (
++                          <div
++                            style={{
++                              position: "absolute",
++                              top: "100%",
++                              left: "12px",
++                              right: "12px",
++                              backgroundColor: "white",
++                              border: "1px solid var(--border-color)",
++                              borderRadius: "var(--radius-md)",
++                              boxShadow: "var(--shadow-lg)",
++                              zIndex: 1000,
++                              maxHeight: "220px",
++                              overflowY: "auto",
++                              marginTop: "4px",
++                            }}
++                          >
++                            {(() => {
++                              const search = (localRefNames[ref.id] || "").toLowerCase().trim()
++                              const filtered = presets.filter(p => 
++                                p.name.toLowerCase().includes(search)
++                              )
++
++                              if (filtered.length === 0) {
++                                return (
++                                  <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic", textAlign: "left" }}>
++                                    Γ£¿ R├⌐f├⌐rence personnalis├⌐e libre
++                                  </div>
++                                )
++                              }
++
++                              return filtered.map((preset) => (
++                                <div
++                                  key={preset.name}
++                                  onClick={() => handleSelectPredefinedRef(ref.id, preset.name, preset.grams)}
++                                  style={{
++                                    padding: "8px 14px",
++                                    fontSize: "0.85rem",
++                                    fontWeight: 500,
++                                    cursor: "pointer",
++                                    transition: "background-color 0.15s",
++                                    borderBottom: "1px solid #f1f5f9",
++                                    textAlign: "left",
++                                    display: "flex",
++                                    justifyContent: "space-between",
++                                    alignItems: "center",
++                                    color: "var(--text-main)"
++                                  }}
++                                  onMouseEnter={(e) => {
++                                    e.currentTarget.style.backgroundColor = "var(--primary-light)"
++                                    e.currentTarget.style.color = "var(--primary)"
++                                  }}
++                                  onMouseLeave={(e) => {
++                                    e.currentTarget.style.backgroundColor = "transparent"
++                                    e.currentTarget.style.color = "var(--text-main)"
++                                  }}
++                                >
++                                  <span>{preset.name}</span>
++                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>
++                                    {preset.grams}g
++                                  </span>
++                                </div>
++                              ))
++                            })()}
++                          </div>
++                        )}
+                       </td>
+                       
+                       <td style={{ padding: "8px 12px", textAlign: "center" }}>
+@@ -294,57 +426,112 @@ export default function Commande() {
+           </div>
+         </div>
+ 
++
++
+         {/* Command Milk Type Selector */}
+         <div className="form-group" style={{ marginTop: 4 }}>
+-          <span className="form-label" style={{ marginBottom: 6 }}>Type de lait requis pour cette commande</span>
+-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+-            {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
+-              const isSelected = (activeCommand.milkType || "bio") === type
+-              const colors = {
+-                bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
+-                fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
+-                savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
+-                montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
+-              }[type]
+-
+-              return (
+-                <button
+-                  key={type}
+-                  type="button"
+-                  onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
+-                  style={{
+-                    padding: "10px 4px",
+-                    borderRadius: "var(--radius-sm)",
+-                    fontSize: "0.8rem",
+-                    fontWeight: isSelected ? "800" : "600",
+-                    border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
+-                    background: isSelected ? colors.bg : "#ffffff",
+-                    color: isSelected ? colors.color : "var(--text-muted)",
+-                    cursor: "pointer",
+-                    transition: "var(--transition)",
+-                    textAlign: "center",
+-                    boxShadow: isSelected ? "inset 0 1px 2px rgba(0,0,0,0.02)" : "none",
+-                  }}
+-                  onMouseEnter={(e) => {
+-                    if (!isSelected) {
+-                      e.currentTarget.style.borderColor = colors.color
+-                      e.currentTarget.style.color = colors.color
+-                    }
+-                  }}
+-                  onMouseLeave={(e) => {
+-                    if (!isSelected) {
+-                      e.currentTarget.style.borderColor = "var(--border-color)"
+-                      e.currentTarget.style.color = "var(--text-muted)"
+-                    }
+-                  }}
+-                >
+-                  {colors.label}
+-                </button>
+-              )
+-            })}
+-          </div>
++          <span className="form-label" style={{ marginBottom: 6 }}>
++            {activeCommand.isSkyr ? "Recette & Lait requis" : "Type de lait requis pour cette commande"}
++          </span>
++          {!activeCommand.isSkyr ? (
++            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
++              {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
++                const isSelected = (activeCommand.milkType || "bio") === type
++                const colors = {
++                  bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
++                  fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
++                  savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
++                  montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
++                }[type]
++
++                return (
++                  <button
++                    key={type}
++                    type="button"
++                    onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
++                    style={{
++                      padding: "10px 4px",
++                      borderRadius: "var(--radius-sm)",
++                      fontSize: "0.8rem",
++                      fontWeight: isSelected ? "800" : "600",
++                      border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
++                      background: isSelected ? colors.bg : "#ffffff",
++                      color: isSelected ? colors.color : "var(--text-muted)",
++                      cursor: "pointer",
++                      transition: "var(--transition)",
++                      textAlign: "center"
++                    }}
++                  >
++                    {colors.label}
++                  </button>
++                )
++              })}
++            </div>
++          ) : (
++            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
++              {([
++                { key: "fcv3", label: "≡ƒº¬ Lait FCV3", color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)" },
++                { key: "ecreme_savoie", label: "≡ƒÅö∩╕Å ├ëcr├⌐m├⌐ Savoie", color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)" },
++                { key: "ecreme_montagne", label: "Γ¢░∩╕Å ├ëcr├⌐m├⌐ Montagne", color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)" },
++              ] as const).map((opt) => {
++                const isSelected = activeCommand.skyrMilkType === opt.key
++                return (
++                  <button
++                    key={opt.key}
++                    type="button"
++                    onClick={() => dispatch(setSkyrMilkType({ id: activeCommand.id, skyrMilkType: opt.key }))}
++                    style={{
++                      padding: "10px 4px",
++                      borderRadius: "var(--radius-sm)",
++                      fontSize: "0.78rem",
++                      fontWeight: isSelected ? "800" : "600",
++                      border: `1px solid ${isSelected ? opt.color : "var(--border-color)"}`,
++                      background: isSelected ? opt.bg : "#ffffff",
++                      color: isSelected ? opt.color : "var(--text-muted)",
++                      cursor: "pointer",
++                      transition: "var(--transition)",
++                      textAlign: "center"
++                    }}
++                  >
++                    {opt.label}
++                  </button>
++                )
++              })}
++            </div>
++          )}
+         </div>
+ 
++        {/* Special FCV3 direct pasteurisation checkbox for Skyr */}
++        {activeCommand.isSkyr && activeCommand.skyrMilkType === "fcv3" && (
++          <div style={{ 
++            gridColumn: "span 2",
++            display: "flex",
++            alignItems: "center",
++            gap: 10,
++            backgroundColor: "rgba(37, 99, 235, 0.05)",
++            padding: "10px 16px",
++            borderRadius: "var(--radius-md)",
++            border: "1px solid rgba(37, 99, 235, 0.15)",
++            marginTop: 4
++          }}>
++            <input
++              type="checkbox"
++              id="directPasto"
++              checked={activeCommand.skyrDirectPasto || false}
++              onChange={(e) => dispatch(setSkyrDirectPasto({ id: activeCommand.id, direct: e.target.checked }))}
++              style={{
++                width: "18px",
++                height: "18px",
++                cursor: "pointer",
++                accentColor: "var(--primary)"
++              }}
++            />
++            <label htmlFor="directPasto" style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", cursor: "pointer" }}>
++              ΓÜí Pasteurisation en direct (sans passer par un TLS)
++            </label>
++          </div>
++        )}
++
+         {/* Global Totals Summary */}
+         <div className="info-section" style={{ marginTop: 12 }}>
+           <div className="info-item">
+
+commit 289a8fc6ba55abd6b5700f4859da236658132177
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Fri May 29 15:19:12 2026 +0200
+
+    feat: separate orders and production, support raw milk batches with average protein/fat reception, multi-reference orders, and create a brand new machine launching tab with mobile responsiveness
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 29cc437..48ceb58 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -1,6 +1,6 @@
+ "use client"
+ 
+-import { useState, useEffect } from "react"
++import { useEffect, useState } from "react"
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+ import { 
+@@ -8,9 +8,10 @@ import {
+   deleteCommand, 
+   setActiveCommand, 
+   setCommandMilkType,
+-  setOrderQty, 
+-  setGramPerPot, 
+   setProductionStartTime,
++  addReference,
++  updateReference,
++  deleteReference,
+   MilkType
+ } from "../lib/orderSlice"
+ 
+@@ -31,23 +32,59 @@ export default function Commande() {
+     }
+   }, [productionStartTime, dispatch])
+ 
+-  const [localOrderQty, setLocalOrderQty] = useState(activeCommand?.orderQty?.toString() || "0")
+-  const [localGramPerPot, setLocalGramPerPot] = useState(activeCommand?.gramPerPot?.toString() || "0")
++  // Track local input values to avoid dispatch lag during fast typing
++  const [localRefNames, setLocalRefNames] = useState<{ [refId: string]: string }>({})
++  const [localRefPots, setLocalRefPots] = useState<{ [refId: string]: string }>({})
++  const [localRefGrams, setLocalRefGrams] = useState<{ [refId: string]: string }>({})
+ 
+-  // Synchronize input fields when the active command changes
++  // Initialize and synchronize local values when command or references change
+   useEffect(() => {
+     if (activeCommand) {
+-      setLocalOrderQty(activeCommand.orderQty.toString())
+-      setLocalGramPerPot(activeCommand.gramPerPot.toString())
++      const names: typeof localRefNames = {}
++      const pots: typeof localRefPots = {}
++      const grams: typeof localRefGrams = {}
++
++      activeCommand.references.forEach(ref => {
++        names[ref.id] = ref.name
++        pots[ref.id] = ref.potsQty.toString()
++        grams[ref.id] = ref.gramPerPot.toString()
++      })
++
++      setLocalRefNames(names)
++      setLocalRefPots(pots)
++      setLocalRefGrams(grams)
+     }
+-  }, [activeCommandId, activeCommand?.orderQty, activeCommand?.gramPerPot])
++  }, [activeCommandId, activeCommand?.references])
+ 
+-  const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
++  const handleUpdateRef = (refId: string, field: "name" | "potsQty" | "gramPerPot", valueStr: string) => {
++    let parsedValue: any = valueStr
++
++    if (field === "name") {
++      setLocalRefNames(prev => ({ ...prev, [refId]: valueStr }))
++    } else if (field === "potsQty") {
++      const cleanVal = valueStr.replace(/[^0-9]/g, "")
++      setLocalRefPots(prev => ({ ...prev, [refId]: cleanVal }))
++      parsedValue = Number(cleanVal) || 0
++    } else if (field === "gramPerPot") {
++      const cleanVal = valueStr.replace(/[^0-9]/g, "")
++      setLocalRefGrams(prev => ({ ...prev, [refId]: cleanVal }))
++      parsedValue = Number(cleanVal) || 0
++    }
++
++    dispatch(updateReference({
++      cmdId: activeCommand.id,
++      refId,
++      fields: { [field]: parsedValue }
++    }))
++  }
++
++  // Calculate total pots quantity for active command
++  const totalPots = activeCommand.references.reduce((sum, r) => sum + r.potsQty, 0)
+ 
+   return (
+     <div className="card">
+       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+-        <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>1. Commandes clients</h2>
++        <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>1. Commandes Clients</h2>
+         <button
+           type="button"
+           onClick={() => dispatch(addCommand())}
+@@ -60,8 +97,9 @@ export default function Commande() {
+ 
+       {/* Command Tabs Selection */}
+       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
+-        {commands.map((cmd, idx) => {
++        {commands.map((cmd) => {
+           const isActive = cmd.id === activeCommandId
++          const cmdPots = cmd.references.reduce((s, r) => s + r.potsQty, 0)
+           return (
+             <div
+               key={cmd.id}
+@@ -85,7 +123,7 @@ export default function Commande() {
+             >
+               <span>{cmd.name}</span>
+               <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
+-                ({(cmd.orderQty / 1000).toFixed(0)}k pots)
++                ({(cmdPots / 1000).toFixed(0)}k pots)
+               </span>
+               
+               {commands.length > 1 && (
+@@ -119,39 +157,136 @@ export default function Commande() {
+       </div>
+ 
+       <div className="form-grid">
+-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+-          <div className="form-group">
+-            <label className="form-label">
+-              Nombre de pots
+-              <input
+-                type="text"
+-                inputMode="decimal"
+-                step="any"
+-                value={localOrderQty}
+-                onFocus={(event) => event.currentTarget.select()}
+-                onChange={(event) => {
+-                  const val = event.target.value
+-                  setLocalOrderQty(val)
+-                  dispatch(setOrderQty(parseNumber(val)))
+-                }}
+-                className="form-input"
+-              />
+-            </label>
++        
++        {/* Product References List Table */}
++        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
++          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
++            <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
++              R├⌐f├⌐rences Produits de la Commande
++            </span>
++            
++            <button
++              type="button"
++              onClick={() => dispatch(addReference({ cmdId: activeCommand.id }))}
++              className="btn btn-secondary"
++              style={{ padding: "4px 10px", fontSize: "0.75rem", color: "var(--primary)", borderColor: "var(--primary-border)" }}
++            >
++              Γ₧ò Ajouter une r├⌐f├⌐rence
++            </button>
+           </div>
+ 
++          <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", overflowX: "auto" }}>
++            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
++              <thead>
++                <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid var(--border-color)" }}>
++                  <th style={{ padding: "10px 14px", color: "var(--text-muted)" }}>Nom R├⌐f</th>
++                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "140px" }}>Quantit├⌐ (pots)</th>
++                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "120px" }}>Format (g)</th>
++                  <th style={{ padding: "10px 14px", color: "var(--text-muted)", textAlign: "center", width: "130px" }}>Masse Blanche</th>
++                  <th style={{ padding: "10px 14px", width: "50px" }}></th>
++                </tr>
++              </thead>
++              <tbody>
++                {activeCommand.references.map((ref) => {
++                  const refPots = Number(localRefPots[ref.id]) || 0
++                  const refGrams = Number(localRefGrams[ref.id]) || 0
++                  const massKg = (refPots * refGrams) / 1000
++
++                  return (
++                    <tr key={ref.id} style={{ borderBottom: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
++                      <td style={{ padding: "8px 12px" }}>
++                        <input
++                          type="text"
++                          value={localRefNames[ref.id] || ""}
++                          onChange={(e) => handleUpdateRef(ref.id, "name", e.target.value)}
++                          style={{
++                            width: "100%",
++                            padding: "6px 10px",
++                            borderRadius: "4px",
++                            border: "1px solid #cbd5e1",
++                            fontSize: "0.85rem",
++                            fontWeight: 600,
++                          }}
++                        />
++                      </td>
++                      
++                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++                        <input
++                          type="text"
++                          value={localRefPots[ref.id] || ""}
++                          onChange={(e) => handleUpdateRef(ref.id, "potsQty", e.target.value)}
++                          style={{
++                            width: "100%",
++                            padding: "6px 10px",
++                            borderRadius: "4px",
++                            border: "1px solid #cbd5e1",
++                            fontSize: "0.85rem",
++                            fontWeight: 700,
++                            textAlign: "center"
++                          }}
++                        />
++                      </td>
++                      
++                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++                        <input
++                          type="text"
++                          value={localRefGrams[ref.id] || ""}
++                          onChange={(e) => handleUpdateRef(ref.id, "gramPerPot", e.target.value)}
++                          style={{
++                            width: "100%",
++                            padding: "6px 10px",
++                            borderRadius: "4px",
++                            border: "1px solid #cbd5e1",
++                            fontSize: "0.85rem",
++                            fontWeight: 700,
++                            textAlign: "center"
++                          }}
++                        />
++                      </td>
++
++                      <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>
++                        {massKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg
++                      </td>
++
++                      <td style={{ padding: "8px 12px", textAlign: "center" }}>
++                        {activeCommand.references.length > 1 && (
++                          <button
++                            type="button"
++                            onClick={() => dispatch(deleteReference({ cmdId: activeCommand.id, refId: ref.id }))}
++                            style={{
++                              border: "none",
++                              background: "none",
++                              color: "var(--text-muted)",
++                              cursor: "pointer",
++                              fontSize: "1rem",
++                              fontWeight: 700
++                            }}
++                            onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
++                            onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
++                          >
++                            Γ£ò
++                          </button>
++                        )}
++                      </td>
++                    </tr>
++                  )
++                })}
++              </tbody>
++            </table>
++          </div>
++        </div>
++
++        {/* Global Production Date/Time start */}
++        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginTop: 8 }}>
+           <div className="form-group">
+             <label className="form-label">
+-              Grammage par pot (g)
++              Date & Heure globale de d├⌐but de production
+               <input
+-                type="text"
+-                inputMode="decimal"
+-                step="any"
+-                value={localGramPerPot}
+-                onFocus={(event) => event.currentTarget.select()}
++                type="datetime-local"
++                value={productionStartTime}
++                disabled={isSimulating}
+                 onChange={(event) => {
+-                  const val = event.target.value
+-                  setLocalGramPerPot(val)
+-                  dispatch(setGramPerPot(parseNumber(val)))
++                  dispatch(setProductionStartTime(event.target.value))
+                 }}
+                 className="form-input"
+               />
+@@ -159,22 +294,7 @@ export default function Commande() {
+           </div>
+         </div>
+ 
+-        <div className="form-group">
+-          <label className="form-label">
+-            Date & Heure globale de d├⌐but de production
+-            <input
+-              type="datetime-local"
+-              value={productionStartTime}
+-              disabled={isSimulating}
+-              onChange={(event) => {
+-                dispatch(setProductionStartTime(event.target.value))
+-              }}
+-              className="form-input"
+-            />
+-          </label>
+-        </div>
+-
+-        {/* Premium Command Milk Type Selector */}
++        {/* Command Milk Type Selector */}
+         <div className="form-group" style={{ marginTop: 4 }}>
+           <span className="form-label" style={{ marginBottom: 6 }}>Type de lait requis pour cette commande</span>
+           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+@@ -225,13 +345,18 @@ export default function Commande() {
+           </div>
+         </div>
+ 
+-        <div className="info-section" style={{ marginTop: 8 }}>
++        {/* Global Totals Summary */}
++        <div className="info-section" style={{ marginTop: 12 }}>
++          <div className="info-item">
++            <span className="info-label">Pots totaux command├⌐s</span>
++            <span className="info-value">{totalPots.toLocaleString()} pots</span>
++          </div>
+           <div className="info-item">
+-            <span className="info-label">Masse blanche active</span>
++            <span className="info-label">Masse blanche totale calcul├⌐e</span>
+             <span className="info-value">{activeCommand?.whiteMassKg?.toFixed(1) || "0.0"} kg</span>
+           </div>
+           <div className="info-item">
+-            <span className="info-label">Lait cru active</span>
++            <span className="info-label">Lait cru active requis (estim├⌐)</span>
+             <span className="info-value">{activeCommand?.milkReceivedVolume?.toFixed(1) || "0.0"} L</span>
+           </div>
+         </div>
+
+commit e9c41b2c5e82a7ea618acd837e48e79d4f158460
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Fri May 29 13:45:41 2026 +0200
+
+    Ajout d'un menu de navigation
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 56cdf80..29cc437 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -7,9 +7,11 @@ import {
+   addCommand, 
+   deleteCommand, 
+   setActiveCommand, 
++  setCommandMilkType,
+   setOrderQty, 
+   setGramPerPot, 
+-  setProductionStartTime 
++  setProductionStartTime,
++  MilkType
+ } from "../lib/orderSlice"
+ 
+ export default function Commande() {
+@@ -172,6 +174,57 @@ export default function Commande() {
+           </label>
+         </div>
+ 
++        {/* Premium Command Milk Type Selector */}
++        <div className="form-group" style={{ marginTop: 4 }}>
++          <span className="form-label" style={{ marginBottom: 6 }}>Type de lait requis pour cette commande</span>
++          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
++            {(["bio", "fcv3", "savoie", "montagne"] as MilkType[]).map((type) => {
++              const isSelected = (activeCommand.milkType || "bio") === type
++              const colors = {
++                bio: { color: "var(--success)", bg: "rgba(16, 185, 129, 0.1)", label: "≡ƒî▒ Bio" },
++                fcv3: { color: "var(--primary)", bg: "rgba(37, 99, 235, 0.1)", label: "≡ƒº¬ FCV3" },
++                savoie: { color: "var(--warning)", bg: "rgba(245, 158, 11, 0.1)", label: "≡ƒÅö∩╕Å Savoie" },
++                montagne: { color: "var(--violet)", bg: "rgba(139, 92, 246, 0.1)", label: "Γ¢░∩╕Å Montagne" }
++              }[type]
++
++              return (
++                <button
++                  key={type}
++                  type="button"
++                  onClick={() => dispatch(setCommandMilkType({ id: activeCommand.id, milkType: type }))}
++                  style={{
++                    padding: "10px 4px",
++                    borderRadius: "var(--radius-sm)",
++                    fontSize: "0.8rem",
++                    fontWeight: isSelected ? "800" : "600",
++                    border: `1px solid ${isSelected ? colors.color : "var(--border-color)"}`,
++                    background: isSelected ? colors.bg : "#ffffff",
++                    color: isSelected ? colors.color : "var(--text-muted)",
++                    cursor: "pointer",
++                    transition: "var(--transition)",
++                    textAlign: "center",
++                    boxShadow: isSelected ? "inset 0 1px 2px rgba(0,0,0,0.02)" : "none",
++                  }}
++                  onMouseEnter={(e) => {
++                    if (!isSelected) {
++                      e.currentTarget.style.borderColor = colors.color
++                      e.currentTarget.style.color = colors.color
++                    }
++                  }}
++                  onMouseLeave={(e) => {
++                    if (!isSelected) {
++                      e.currentTarget.style.borderColor = "var(--border-color)"
++                      e.currentTarget.style.color = "var(--text-muted)"
++                    }
++                  }}
++                >
++                  {colors.label}
++                </button>
++              )
++            })}
++          </div>
++        </div>
++
+         <div className="info-section" style={{ marginTop: 8 }}>
+           <div className="info-item">
+             <span className="info-label">Masse blanche active</span>
+
+commit dd0e43bf24daea7e3845bc6f2fa2fa5597e89a0d
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Thu May 28 23:35:38 2026 +0200
+
+    feat: design mobile responsif et optimisations de production multi-commandes
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 38df59c..56cdf80 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -3,78 +3,190 @@
+ import { useState, useEffect } from "react"
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+-import { setOrderQty, setGramPerPot } from "../lib/orderSlice"
++import { 
++  addCommand, 
++  deleteCommand, 
++  setActiveCommand, 
++  setOrderQty, 
++  setGramPerPot, 
++  setProductionStartTime 
++} from "../lib/orderSlice"
+ 
+ export default function Commande() {
+   const dispatch = useDispatch()
+-  const { orderQty, gramPerPot, whiteMassKg, status } = useSelector(
++  const { commands, activeCommandId, productionStartTime, isSimulating } = useSelector(
+     (state: RootState) => state.order
+   )
+ 
+-  const [localOrderQty, setLocalOrderQty] = useState(orderQty.toString())
+-  const [localGramPerPot, setLocalGramPerPot] = useState(gramPerPot.toString())
++  const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
+ 
+   useEffect(() => {
+-    const parsed = Number(localOrderQty.trim().replace(",", ".") || "0")
+-    if (parsed !== orderQty) {
+-      setLocalOrderQty(orderQty.toString())
++    if (!productionStartTime) {
++      const now = new Date()
++      const offset = now.getTimezoneOffset()
++      const localNow = new Date(now.getTime() - offset * 60 * 1000)
++      dispatch(setProductionStartTime(localNow.toISOString().slice(0, 16)))
+     }
+-  }, [orderQty])
++  }, [productionStartTime, dispatch])
+ 
++  const [localOrderQty, setLocalOrderQty] = useState(activeCommand?.orderQty?.toString() || "0")
++  const [localGramPerPot, setLocalGramPerPot] = useState(activeCommand?.gramPerPot?.toString() || "0")
++
++  // Synchronize input fields when the active command changes
+   useEffect(() => {
+-    const parsed = Number(localGramPerPot.trim().replace(",", ".") || "0")
+-    if (parsed !== gramPerPot) {
+-      setLocalGramPerPot(gramPerPot.toString())
++    if (activeCommand) {
++      setLocalOrderQty(activeCommand.orderQty.toString())
++      setLocalGramPerPot(activeCommand.gramPerPot.toString())
+     }
+-  }, [gramPerPot])
++  }, [activeCommandId, activeCommand?.orderQty, activeCommand?.gramPerPot])
+ 
+   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
+ 
+   return (
+-    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
+-      <h2>1. Commande client</h2>
+-      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
+-        <label>
+-          Nombre de pots
+-          <input
+-            type="text"
+-            inputMode="decimal"
+-            step="any"
+-            value={localOrderQty}
+-            onFocus={(event) => event.currentTarget.select()}
+-            onChange={(event) => {
+-              const val = event.target.value
+-              setLocalOrderQty(val)
+-              dispatch(setOrderQty(parseNumber(val)))
+-            }}
+-            style={{ width: "100%", marginTop: 4 }}
+-          />
+-        </label>
++    <div className="card">
++      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
++        <h2 style={{ margin: 0, borderBottom: "none", paddingBottom: 0 }}>1. Commandes clients</h2>
++        <button
++          type="button"
++          onClick={() => dispatch(addCommand())}
++          className="btn btn-success"
++          style={{ padding: "6px 12px", fontSize: "0.8rem" }}
++        >
++          Γ₧ò Ajouter une commande
++        </button>
++      </div>
++
++      {/* Command Tabs Selection */}
++      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 16, borderBottom: "1px solid var(--border-color)" }}>
++        {commands.map((cmd, idx) => {
++          const isActive = cmd.id === activeCommandId
++          return (
++            <div
++              key={cmd.id}
++              onClick={() => dispatch(setActiveCommand(cmd.id))}
++              style={{
++                display: "flex",
++                alignItems: "center",
++                gap: 8,
++                padding: "8px 14px",
++                borderRadius: "var(--radius-md)",
++                border: `1px solid ${isActive ? "var(--primary)" : "var(--border-color)"}`,
++                backgroundColor: isActive ? "var(--primary-light)" : "white",
++                color: isActive ? "var(--primary)" : "var(--text-main)",
++                fontWeight: isActive ? "700" : "500",
++                fontSize: "0.85rem",
++                cursor: "pointer",
++                transition: "var(--transition)",
++                whiteSpace: "nowrap",
++                boxShadow: isActive ? "var(--shadow-sm)" : "none",
++              }}
++            >
++              <span>{cmd.name}</span>
++              <span style={{ fontSize: "0.75rem", opacity: 0.75, fontWeight: "normal" }}>
++                ({(cmd.orderQty / 1000).toFixed(0)}k pots)
++              </span>
++              
++              {commands.length > 1 && (
++                <button
++                  type="button"
++                  onClick={(e) => {
++                    e.stopPropagation()
++                    dispatch(deleteCommand(cmd.id))
++                  }}
++                  style={{
++                    border: "none",
++                    background: "none",
++                    color: isActive ? "var(--primary)" : "var(--text-muted)",
++                    cursor: "pointer",
++                    fontSize: "0.95rem",
++                    padding: "0 2px",
++                    display: "flex",
++                    alignItems: "center",
++                    transition: "var(--transition)",
++                  }}
++                  title="Supprimer la commande"
++                  onMouseEnter={(e) => e.currentTarget.style.color = "var(--danger)"}
++                  onMouseLeave={(e) => e.currentTarget.style.color = isActive ? "var(--primary)" : "var(--text-muted)"}
++                >
++                  Γ£ò
++                </button>
++              )}
++            </div>
++          )
++        })}
++      </div>
+ 
+-        <label>
+-          Grammage par pot (g)
+-          <input
+-            type="text"
+-            inputMode="decimal"
+-            step="any"
+-            value={localGramPerPot}
+-            onFocus={(event) => event.currentTarget.select()}
+-            onChange={(event) => {
+-              const val = event.target.value
+-              setLocalGramPerPot(val)
+-              dispatch(setGramPerPot(parseNumber(val)))
+-            }}
+-            style={{ width: "100%", marginTop: 4 }}
+-          />
+-        </label>
++      <div className="form-grid">
++        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
++          <div className="form-group">
++            <label className="form-label">
++              Nombre de pots
++              <input
++                type="text"
++                inputMode="decimal"
++                step="any"
++                value={localOrderQty}
++                onFocus={(event) => event.currentTarget.select()}
++                onChange={(event) => {
++                  const val = event.target.value
++                  setLocalOrderQty(val)
++                  dispatch(setOrderQty(parseNumber(val)))
++                }}
++                className="form-input"
++              />
++            </label>
++          </div>
++
++          <div className="form-group">
++            <label className="form-label">
++              Grammage par pot (g)
++              <input
++                type="text"
++                inputMode="decimal"
++                step="any"
++                value={localGramPerPot}
++                onFocus={(event) => event.currentTarget.select()}
++                onChange={(event) => {
++                  const val = event.target.value
++                  setLocalGramPerPot(val)
++                  dispatch(setGramPerPot(parseNumber(val)))
++                }}
++                className="form-input"
++              />
++            </label>
++          </div>
++        </div>
++
++        <div className="form-group">
++          <label className="form-label">
++            Date & Heure globale de d├⌐but de production
++            <input
++              type="datetime-local"
++              value={productionStartTime}
++              disabled={isSimulating}
++              onChange={(event) => {
++                dispatch(setProductionStartTime(event.target.value))
++              }}
++              className="form-input"
++            />
++          </label>
++        </div>
+ 
+-        <div>
+-          <strong>Masse blanche requise</strong>
+-          <p>{whiteMassKg.toFixed(3)} kg</p>
++        <div className="info-section" style={{ marginTop: 8 }}>
++          <div className="info-item">
++            <span className="info-label">Masse blanche active</span>
++            <span className="info-value">{activeCommand?.whiteMassKg?.toFixed(1) || "0.0"} kg</span>
++          </div>
++          <div className="info-item">
++            <span className="info-label">Lait cru active</span>
++            <span className="info-value">{activeCommand?.milkReceivedVolume?.toFixed(1) || "0.0"} L</span>
++          </div>
+         </div>
+ 
+-        <div>
+-          <small>Statut de la commande : {status}</small>
++        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
++          <span className="status-text" style={{ margin: 0 }}>
++            Statut commande active : <strong style={{ color: "var(--primary)" }}>{activeCommand?.status?.toUpperCase() || "IDLE"}</strong>
++          </span>
+         </div>
+       </div>
+     </div>
+
+commit c7bb5fbcb67772fe025829b8a37967179cf25207
+Author: AlexisMoretto <alexis.moretto@oclock.school>
+Date:   Thu May 28 16:02:58 2026 +0200
+
+    feat: optimiser la selection des cuves, la distribution TLS et la saisie des volumes
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index c35f939..38df59c 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -1,5 +1,6 @@
+ "use client"
+ 
++import { useState, useEffect } from "react"
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+ import { setOrderQty, setGramPerPot } from "../lib/orderSlice"
+@@ -10,6 +11,23 @@ export default function Commande() {
+     (state: RootState) => state.order
+   )
+ 
++  const [localOrderQty, setLocalOrderQty] = useState(orderQty.toString())
++  const [localGramPerPot, setLocalGramPerPot] = useState(gramPerPot.toString())
++
++  useEffect(() => {
++    const parsed = Number(localOrderQty.trim().replace(",", ".") || "0")
++    if (parsed !== orderQty) {
++      setLocalOrderQty(orderQty.toString())
++    }
++  }, [orderQty])
++
++  useEffect(() => {
++    const parsed = Number(localGramPerPot.trim().replace(",", ".") || "0")
++    if (parsed !== gramPerPot) {
++      setLocalGramPerPot(gramPerPot.toString())
++    }
++  }, [gramPerPot])
++
+   const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
+ 
+   return (
+@@ -22,9 +40,13 @@ export default function Commande() {
+             type="text"
+             inputMode="decimal"
+             step="any"
+-            value={orderQty}
++            value={localOrderQty}
+             onFocus={(event) => event.currentTarget.select()}
+-            onChange={(event) => dispatch(setOrderQty(parseNumber(event.target.value)))}
++            onChange={(event) => {
++              const val = event.target.value
++              setLocalOrderQty(val)
++              dispatch(setOrderQty(parseNumber(val)))
++            }}
+             style={{ width: "100%", marginTop: 4 }}
+           />
+         </label>
+@@ -35,9 +57,13 @@ export default function Commande() {
+             type="text"
+             inputMode="decimal"
+             step="any"
+-            value={gramPerPot}
++            value={localGramPerPot}
+             onFocus={(event) => event.currentTarget.select()}
+-            onChange={(event) => dispatch(setGramPerPot(parseNumber(event.target.value)))}
++            onChange={(event) => {
++              const val = event.target.value
++              setLocalGramPerPot(val)
++              dispatch(setGramPerPot(parseNumber(val)))
++            }}
+             style={{ width: "100%", marginTop: 4 }}
+           />
+         </label>
+
+commit 64f6f4a6164a50c87f756259c873ee097508559c
+Author: alexismoretto78 <alexis.moretto78@gmail.com>
+Date:   Wed May 27 01:53:55 2026 +0000
+
+    Update client order, osmose and cuve UI with auto tank selection and FCV calculation
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+index 31af73b..c35f939 100644
+--- a/app/components/commande.tsx
++++ b/app/components/commande.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { useDispatch, useSelector } from "react-redux"
+ import { RootState } from "../lib/store"
+-import { setOrderQty, setGramPerPot, resetOrder } from "../lib/orderSlice"
++import { setOrderQty, setGramPerPot } from "../lib/orderSlice"
+ 
+ export default function Commande() {
+   const dispatch = useDispatch()
+@@ -10,6 +10,8 @@ export default function Commande() {
+     (state: RootState) => state.order
+   )
+ 
++  const parseNumber = (value: string) => Number(value.trim().replace(",", ".") || "0")
++
+   return (
+     <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
+       <h2>1. Commande client</h2>
+@@ -17,12 +19,12 @@ export default function Commande() {
+         <label>
+           Nombre de pots
+           <input
+-            type="number"
+-            min={0}
++            type="text"
++            inputMode="decimal"
++            step="any"
+             value={orderQty}
+-            onChange={(event) =>
+-              dispatch(setOrderQty(Number(event.target.value)))
+-            }
++            onFocus={(event) => event.currentTarget.select()}
++            onChange={(event) => dispatch(setOrderQty(parseNumber(event.target.value)))}
+             style={{ width: "100%", marginTop: 4 }}
+           />
+         </label>
+@@ -30,12 +32,12 @@ export default function Commande() {
+         <label>
+           Grammage par pot (g)
+           <input
+-            type="number"
+-            min={0}
++            type="text"
++            inputMode="decimal"
++            step="any"
+             value={gramPerPot}
+-            onChange={(event) =>
+-              dispatch(setGramPerPot(Number(event.target.value)))
+-            }
++            onFocus={(event) => event.currentTarget.select()}
++            onChange={(event) => dispatch(setGramPerPot(parseNumber(event.target.value)))}
+             style={{ width: "100%", marginTop: 4 }}
+           />
+         </label>
+@@ -48,14 +50,6 @@ export default function Commande() {
+         <div>
+           <small>Statut de la commande : {status}</small>
+         </div>
+-
+-        <button
+-          type="button"
+-          onClick={() => dispatch(resetOrder())}
+-          style={{ width: 140, padding: 10, marginTop: 8 }}
+-        >
+-          R├⌐initialiser
+-        </button>
+       </div>
+     </div>
+   )
+
+commit 040e9301e934cd236fe7449db9d4cab4ab9d5145
+Author: alexismoretto78 <alexis.moretto78@gmail.com>
+Date:   Tue May 26 22:48:20 2026 +0000
+
+    premier te"st
+
+diff --git a/app/components/commande.tsx b/app/components/commande.tsx
+new file mode 100644
+index 0000000..31af73b
+--- /dev/null
++++ b/app/components/commande.tsx
+@@ -0,0 +1,62 @@
++"use client"
++
++import { useDispatch, useSelector } from "react-redux"
++import { RootState } from "../lib/store"
++import { setOrderQty, setGramPerPot, resetOrder } from "../lib/orderSlice"
++
++export default function Commande() {
++  const dispatch = useDispatch()
++  const { orderQty, gramPerPot, whiteMassKg, status } = useSelector(
++    (state: RootState) => state.order
++  )
++
++  return (
++    <div style={{ padding: 16, border: "1px solid #ccc", borderRadius: 8 }}>
++      <h2>1. Commande client</h2>
++      <div style={{ display: "grid", gap: 12, maxWidth: 440 }}>
++        <label>
++          Nombre de pots
++          <input
++            type="number"
++            min={0}
++            value={orderQty}
++            onChange={(event) =>
++              dispatch(setOrderQty(Number(event.target.value)))
++            }
++            style={{ width: "100%", marginTop: 4 }}
++          />
++        </label>
++
++        <label>
++          Grammage par pot (g)
++          <input
++            type="number"
++            min={0}
++            value={gramPerPot}
++            onChange={(event) =>
++              dispatch(setGramPerPot(Number(event.target.value)))
++            }
++            style={{ width: "100%", marginTop: 4 }}
++          />
++        </label>
++
++        <div>
++          <strong>Masse blanche requise</strong>
++          <p>{whiteMassKg.toFixed(3)} kg</p>
++        </div>
++
++        <div>
++          <small>Statut de la commande : {status}</small>
++        </div>
++
++        <button
++          type="button"
++          onClick={() => dispatch(resetOrder())}
++          style={{ width: 140, padding: 10, marginTop: 8 }}
++        >
++          R├⌐initialiser
++        </button>
++      </div>
++    </div>
++  )
++}
