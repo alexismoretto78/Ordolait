@@ -23,7 +23,7 @@ export default function Osmose() {
     if (activeCommand) {
       setLocalTarget(activeCommand.targetValue.toString())
     }
-  }, [activeCommandId, activeCommand.targetValue])
+  }, [activeCommand])
 
   const parseNumber = (value: string) => Number(value.trim().replace(",", ".")) || 0
   

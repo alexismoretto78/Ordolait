@@ -47,7 +47,7 @@ export default function Lancement() {
       })
       setLocalPots(inputs)
     }
-  }, [activeCommandId, activeCommand?.references, activeCommand?.refDestinations, activeCommand?.refPotsLaunched])
+  }, [activeCommand])
 
   if (!activeCommand || activeCommand.references.length === 0) {
     return (
