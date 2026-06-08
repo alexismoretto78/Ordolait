@@ -15,27 +15,34 @@ export default function Cuve() {
 
   const activeCommand = commands.find(c => c.id === activeCommandId) || commands[0]
 
-  const selectedCapacity = activeCommand.selectedCFs.reduce((total, name) => {
-    const tank = CF_TANKS.find((t) => t.name === name)
-    return total + (tank?.capacity ?? 0)
-  }, 0)
-
   const volumeForCF = activeCommand.whiteMassKg
-  const remainingVolume = Math.max(0, volumeForCF - selectedCapacity)
 
-  // Calcule le volume distribué à chaque cuve sélectionnée
+  // Calcule le volume distribué à chaque cuve sélectionnée en permettant plusieurs remplissages
   const allocatedVolumes: { [key: string]: number } = {}
   let remainingVolumeToDistribute = volumeForCF
 
-  CF_TANKS.forEach((tank) => {
-    if (activeCommand.selectedCFs.includes(tank.name)) {
-      const allocated = Math.min(remainingVolumeToDistribute, tank.capacity)
-      allocatedVolumes[tank.name] = allocated
-      remainingVolumeToDistribute = Math.max(0, remainingVolumeToDistribute - allocated)
-    } else {
-      allocatedVolumes[tank.name] = 0
-    }
-  })
+  CF_TANKS.forEach((t) => { allocatedVolumes[t.name] = 0 })
+
+  while (remainingVolumeToDistribute > 0) {
+    let allocatedInCycle = false
+    CF_TANKS.forEach((tank) => {
+      if (activeCommand.selectedCFs.includes(tank.name) && remainingVolumeToDistribute > 0) {
+        const take = Math.min(remainingVolumeToDistribute, tank.capacity)
+        if (take > 0) {
+          allocatedVolumes[tank.name] += take
+          remainingVolumeToDistribute = Math.max(0, remainingVolumeToDistribute - take)
+          allocatedInCycle = true
+        }
+      }
+    })
+    if (!allocatedInCycle) break
+  }
+
+  const selectedCapacity = activeCommand.selectedCFs.reduce((total, name) => {
+    return total + (allocatedVolumes[name] || 0)
+  }, 0)
+
+  const remainingVolume = Math.max(0, volumeForCF - selectedCapacity)
 
   return (
     <div className="card">
@@ -93,8 +100,13 @@ export default function Cuve() {
                       <span className="hide-mobile">Capacité : </span>{tank.capacity} L
                     </span>
                     {selected && (
-                      <span className="cuve-volume">
-                        <span className="hide-mobile">Vol : </span>{allocatedVolumes[tank.name].toFixed(0)} L
+                      <span className="cuve-volume" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                        <span><span className="hide-mobile">Vol : </span>{allocatedVolumes[tank.name].toFixed(0)} L</span>
+                        {Math.ceil(allocatedVolumes[tank.name] / tank.capacity) > 1 && (
+                          <span style={{ fontSize: "0.85em", opacity: 0.9, fontWeight: 700 }}>
+                            ({Math.ceil(allocatedVolumes[tank.name] / tank.capacity)} remplissages)
+                          </span>
+                        )}
                       </span>
                     )}
                     {commands.filter(c => c.selectedCFs.includes(tank.name)).length > 0 && (

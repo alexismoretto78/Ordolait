@@ -3,54 +3,39 @@
 import { useState } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { addCommand, deleteCommand, setActiveCommand, updateCommandName } from "../lib/orderSlice"
+import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName } from "../lib/orderSlice"
 
 const ALL_PRESETS = [
-  { name: "Nature 125g", grams: 125 },
-  { name: "Nature 140g", grams: 140 },
-  { name: "Fraise 120g", grams: 120 },
-  { name: "Fraise 125g", grams: 125 },
-  { name: "Abricot 120g", grams: 120 },
-  { name: "Framboise 120g", grams: 120 },
-  { name: "Vanille 125g", grams: 125 },
-  { name: "Citron 125g", grams: 125 },
-  { name: "Myrtille 120g", grams: 120 },
-  { name: "Skyr Nature 125g", grams: 125 },
-  { name: "Skyr Nature 140g", grams: 140 },
-  { name: "Skyr Nature 400g", grams: 400 },
-  { name: "Skyr Nature 500g", grams: 500 },
-  { name: "Skyr Fraise 120g", grams: 120 },
-  { name: "Skyr Vanille 125g", grams: 125 },
-  { name: "Skyr Myrtille 120g", grams: 120 },
-  { name: "Skyr Abricot 120g", grams: 120 },
-  { name: "Baiko", grams: 105 },
-  { name: "Val de Praz", grams: 105 },
-  { name: "MDD", grams: 105 }
+  { name: "BAIKO", grams: 105 },
+  { name: "MDD", grams: 105 },
+  { name: "SKYR", grams: 125 },
+  { name: "VAL DE PRAZ", grams: 105 },
+  { name: "NATURE", grams: 125 }
 ]
 
 export default function Commande() {
   const dispatch = useDispatch()
-  const { commands, activeCommandId } = useSelector((state: RootState) => state.order)
+  const { commands, completedCommands, activeCommandId, simulationResults } = useSelector((state: RootState) => state.order)
 
-  const [activeSubTab, setActiveSubTab] = useState<"encours" | "ajouter">("encours")
+  const [activeSubTab, setActiveSubTab] = useState<"encours" | "ajouter" | "terminees">("encours")
 
   // Form states for adding a command
+  const [newCmdName, setNewCmdName] = useState("Nouvelle Commande")
   const [newCmdStartDate, setNewCmdStartDate] = useState(new Date().toISOString().slice(0, 16))
   const [newCmdEndDate, setNewCmdEndDate] = useState("")
-  const [newCmdRef, setNewCmdRef] = useState("Baiko Nature")
-  const [newCmdPots, setNewCmdPots] = useState("20000")
-  const [newCmdGrams, setNewCmdGrams] = useState("125")
+  const [newCmdRefs, setNewCmdRefs] = useState([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])
 
   const handleAddCommand = (e: React.FormEvent) => {
     e.preventDefault()
     dispatch(addCommand({
+      name: newCmdName,
       startDate: newCmdStartDate,
       expectedEndDate: newCmdEndDate,
-      refName: newCmdRef,
-      potsQty: Number(newCmdPots),
-      gramPerPot: Number(newCmdGrams)
+      references: newCmdRefs.map(r => ({ ...r, potsQty: Number(r.potsQty), gramPerPot: Number(r.gramPerPot) }))
     }))
     setActiveSubTab("encours")
+    setNewCmdName("Nouvelle Commande")
+    setNewCmdRefs([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])
   }
 
   const nowMs = Date.now()
@@ -68,6 +53,14 @@ export default function Commande() {
             style={{ padding: "6px 12px", fontSize: "0.85rem" }}
           >
             Commandes en cours
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("terminees")}
+            className={`btn ${activeSubTab === "terminees" ? "btn-primary" : "btn-secondary"}`}
+            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
+          >
+            Commandes terminées
           </button>
           <button
             type="button"
@@ -152,14 +145,20 @@ export default function Commande() {
                           </span>
                         ))}
                       </div>
+                      
+                      {simulationResults?.commandsResults[cmd.id]?.error && (
+                        <div style={{ marginTop: "12px", padding: "8px", backgroundColor: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px", fontSize: "0.85rem", fontWeight: 600 }}>
+                          ⚠️ {simulationResults.commandsResults[cmd.id].error}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm("Valider la fin de cette commande ? Elle sera supprimée et le planning mis à jour.")) {
-                            dispatch(deleteCommand(cmd.id))
+                          if (confirm("Valider la fin de cette commande ? Elle sera déplacée vers les terminées.")) {
+                            dispatch(completeCommand(cmd.id))
                           }
                         }}
                         className="btn btn-primary"
@@ -191,80 +190,173 @@ export default function Commande() {
         </div>
       )}
 
+      {activeSubTab === "terminees" && (
+        <div>
+          {completedCommands.length === 0 ? (
+            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+              Aucune commande terminée.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {completedCommands.map(cmd => (
+                <div 
+                  key={cmd.id}
+                  style={{
+                    border: "1px solid var(--border-color)",
+                    backgroundColor: "#f1f5f9",
+                    padding: "16px",
+                    borderRadius: "var(--radius-md)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}
+                >
+                  <div>
+                    <h4 style={{ margin: "0 0 4px 0", color: "var(--text-muted)" }}>
+                      {cmd.name}
+                      <span style={{ marginLeft: "8px", fontSize: "0.8rem", backgroundColor: "var(--success)", color: "white", padding: "2px 6px", borderRadius: "4px" }}>Terminée</span>
+                    </h4>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
+                      <span><strong>Début :</strong> {cmd.startDate ? new Date(cmd.startDate).toLocaleString() : "Non défini"}</span>
+                    </div>
+                    <div style={{ marginTop: "8px", fontSize: "0.85rem", opacity: 0.8 }}>
+                      {cmd.references.map(r => (
+                        <span key={r.id} style={{ display: "inline-block", marginRight: "12px", background: "#e2e8f0", padding: "2px 8px", borderRadius: "12px" }}>
+                          {r.name} - {r.potsQty} pots ({r.gramPerPot}g)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeSubTab === "ajouter" && (
-        <div style={{ maxWidth: "500px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
+        <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
           <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande</h3>
           <form onSubmit={handleAddCommand} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             
             <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-              Date et heure de début
+              Nom de la commande
               <input 
-                type="datetime-local" 
-                value={newCmdStartDate} 
-                onChange={(e) => setNewCmdStartDate(e.target.value)}
+                type="text" 
+                value={newCmdName} 
+                onChange={(e) => setNewCmdName(e.target.value)}
                 required
                 style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
               />
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-              Date et heure de fin souhaitée
-              <input 
-                type="datetime-local" 
-                value={newCmdEndDate} 
-                onChange={(e) => setNewCmdEndDate(e.target.value)}
-                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-              />
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-              Référence du produit
-              <select 
-                value={newCmdRef} 
-                onChange={(e) => {
-                  setNewCmdRef(e.target.value)
-                  const preset = ALL_PRESETS.find(p => p.name === e.target.value)
-                  if (preset) {
-                    setNewCmdGrams(preset.grams.toString())
-                  }
-                }}
-                required
-                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-              >
-                <option value="" disabled>-- Sélectionner une référence --</option>
-                {ALL_PRESETS.map(p => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
             </label>
 
             <div style={{ display: "flex", gap: "16px" }}>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                Nombre de pots
+                Date et heure de début
                 <input 
-                  type="number" 
-                  value={newCmdPots} 
-                  onChange={(e) => setNewCmdPots(e.target.value)}
+                  type="datetime-local" 
+                  value={newCmdStartDate} 
+                  onChange={(e) => setNewCmdStartDate(e.target.value)}
                   required
-                  min="1"
                   style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
                 />
               </label>
 
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                Grammage (g)
+                Date et heure de fin souhaitée
                 <input 
-                  type="number" 
-                  value={newCmdGrams} 
-                  onChange={(e) => setNewCmdGrams(e.target.value)}
-                  required
-                  min="1"
+                  type="datetime-local" 
+                  value={newCmdEndDate} 
+                  onChange={(e) => setNewCmdEndDate(e.target.value)}
                   style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
                 />
               </label>
             </div>
 
-            <button type="submit" className="btn btn-success" style={{ marginTop: "10px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
+            <div style={{ marginTop: "10px" }}>
+              <h4 style={{ margin: "0 0 10px 0" }}>Références de la commande</h4>
+              {newCmdRefs.map((refItem, index) => (
+                <div key={index} style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+                  <label style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Référence
+                    <select 
+                      value={refItem.refName} 
+                      onChange={(e) => {
+                        const newName = e.target.value
+                        const preset = ALL_PRESETS.find(p => p.name === newName)
+                        const updated = [...newCmdRefs]
+                        updated[index] = { ...updated[index], refName: newName }
+                        if (preset) {
+                          updated[index].gramPerPot = preset.grams
+                        }
+                        setNewCmdRefs(updated)
+                      }}
+                      required
+                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                    >
+                      <option value="" disabled>-- Sélectionner --</option>
+                      {ALL_PRESETS.map(p => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Nombre de pots
+                    <input 
+                      type="number" 
+                      value={refItem.potsQty} 
+                      onChange={(e) => {
+                        const updated = [...newCmdRefs]
+                        updated[index] = { ...updated[index], potsQty: Number(e.target.value) }
+                        setNewCmdRefs(updated)
+                      }}
+                      required
+                      min="1"
+                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                    />
+                  </label>
+
+                  <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                    Grammage (g)
+                    <input 
+                      type="number" 
+                      value={refItem.gramPerPot} 
+                      onChange={(e) => {
+                        const updated = [...newCmdRefs]
+                        updated[index] = { ...updated[index], gramPerPot: Number(e.target.value) }
+                        setNewCmdRefs(updated)
+                      }}
+                      required
+                      min="1"
+                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                    />
+                  </label>
+
+                  {newCmdRefs.length > 1 && (
+                    <button 
+                      type="button" 
+                      onClick={() => setNewCmdRefs(newCmdRefs.filter((_, i) => i !== index))}
+                      className="btn btn-secondary" 
+                      style={{ padding: "8px", color: "var(--danger)", border: "1px solid var(--border-color)", marginBottom: "1px" }}
+                      title="Supprimer la référence"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button 
+                type="button" 
+                onClick={() => setNewCmdRefs([...newCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])}
+                className="btn btn-secondary"
+                style={{ fontSize: "0.85rem", padding: "6px 12px", marginTop: "4px" }}
+              >
+                + Ajouter une référence
+              </button>
+            </div>
+
+            <button type="submit" className="btn btn-success" style={{ marginTop: "20px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
               ✓ Valider la commande
             </button>
           </form>

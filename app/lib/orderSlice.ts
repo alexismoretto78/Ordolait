@@ -103,6 +103,7 @@ export type GanttSegment = {
   color: string
   label?: string
   shortLabel?: string
+  details?: string
 }
 
 export type GanttTask = {
@@ -112,6 +113,7 @@ export type GanttTask = {
   durationMinutes: number
   color: string
   segments?: GanttSegment[]
+  details?: string
 }
 
 export type MultiCommandSimResults = {
@@ -183,6 +185,7 @@ export type OrderState = {
   commands: Command[]
   activeCommandId: string
   simulationResults?: MultiCommandSimResults
+  completedCommands: Command[]
 
   milkOrders: MilkOrder[]
 }
@@ -198,8 +201,8 @@ const initialCommand = (id: string, name: string, overrides?: Partial<Command>):
   })
 
   const references: ProductReference[] = [
-    { id: "ref-1", name: "Baiko Nature 125g", potsQty: 80000, gramPerPot: 125 },
-    { id: "ref-2", name: "MDD Fraise 120g", potsQty: 40000, gramPerPot: 120 },
+    { id: "ref-1", name: "BAIKO", potsQty: 80000, gramPerPot: 105 },
+    { id: "ref-2", name: "MDD", potsQty: 40000, gramPerPot: 105 },
   ]
 
   const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {
@@ -314,6 +317,7 @@ const initialState: OrderState = {
   // Start with one default command
   commands: [initialCommand("cmd-1", "Commande 1")],
   activeCommandId: "cmd-1",
+  completedCommands: [],
 
   milkOrders: [],
 }
@@ -487,17 +491,24 @@ export const distributeToTLS = (totalVolume: number) => {
   // Priority order: tls2, tls3, tls1
   const keys: (keyof typeof alloc)[] = ["tls2", "tls3", "tls1"]
 
-  // 1. Initial distribution
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]
-    const tankName = key.toUpperCase() // "TLS2", "TLS3", "TLS1"
-    const tank = TLS_TANKS.find((t) => t.name === tankName)
-    const capacity = tank ? tank.capacity : 0
+  // Keep distributing until remaining is 0
+  while (remaining > 0) {
+    let allocatedInCycle = false
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      const tankName = key.toUpperCase() // "TLS2", "TLS3", "TLS1"
+      const tank = TLS_TANKS.find((t) => t.name === tankName)
+      const capacity = tank ? tank.capacity : 0
 
-    const take = Math.min(remaining, capacity)
-    alloc[key] = Number(take.toFixed(3))
-    remaining = Number((remaining - take).toFixed(3))
-    if (remaining <= 0) break
+      const take = Math.min(remaining, capacity)
+      if (take > 0) {
+        alloc[key] = Number((alloc[key] + take).toFixed(3))
+        remaining = Number((remaining - take).toFixed(3))
+        allocatedInCycle = true
+      }
+      if (remaining <= 0) break
+    }
+    if (!allocatedInCycle) break
   }
 
   // 2. Adjustments: no less than 1000 L in active TLS
@@ -829,7 +840,8 @@ export const runMultiCommandSimulation = (
       skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
       baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
       vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-      nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
+      nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+      autres: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
     }
 
     cmd.references.forEach(r => {
@@ -844,9 +856,12 @@ export const runMultiCommandSimulation = (
       } else if (name.includes("val de praz") || name.includes("vdp")) {
         groups.vdp.whiteMassKg += mass / 1.05
         groups.vdp.refs.push({ cmd, ref: r })
-      } else {
+      } else if (name.includes("nature") || name.includes("bio")) {
         groups.nature.whiteMassKg += mass
         groups.nature.refs.push({ cmd, ref: r })
+      } else {
+        groups.autres.whiteMassKg += mass
+        groups.autres.refs.push({ cmd, ref: r })
       }
     })
 
@@ -854,6 +869,13 @@ export const runMultiCommandSimulation = (
     if (groups.baiko_mdd.whiteMassKg > 0) typesToProduce.push({ key: `baiko_mdd-${cmd.id}`, name: cmd.name, ...groups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false })
     if (groups.vdp.whiteMassKg > 0) typesToProduce.push({ key: `vdp-${cmd.id}`, name: cmd.name, ...groups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false })
     if (groups.nature.whiteMassKg > 0) typesToProduce.push({ key: `nature-${cmd.id}`, name: cmd.name, ...groups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false })
+    
+    if (groups.autres.whiteMassKg > 0) {
+      if (!commandsResults[cmd.id]) {
+        commandsResults[cmd.id] = { id: cmd.id, name: cmd.name, transferStart: 0, transferEnd: 0, osmoseStart: 0, osmoseEnd: 0, powderStart: 0, powderEnd: 0, pastoStart: 0, pastoEnd: 0, maturationStart: 0, maturationEnd: 0, packagingStart: 0, packagingEnd: 0, packagingAtiaDuration: 0, packagingGrunDuration: 0, totalDuration: 0 }
+      }
+      commandsResults[cmd.id].error = `Erreur : Recettes inconnues (${groups.autres.refs.map(r => r.ref.name).join(", ")}). Le lait n'a pas pu être sélectionné et ces produits ne seront pas planifiés.`
+    }
   })
 
   const drawMilk = (reqVol: number, preferredTypes: MilkType[]) => {
@@ -1049,12 +1071,16 @@ export const runMultiCommandSimulation = (
       if (res.osmoseStart === 0 || osmoseStart < res.osmoseStart) res.osmoseStart = osmoseStart
       res.osmoseEnd = Math.max(res.osmoseEnd, osmoseEnd)
 
+      const refsList = group.refs.map((r: any) => `- ${r.ref.name} (${r.ref.potsQty} pots)`).join('\n')
+      const groupDetails = `Commande : ${group.name}\nTLS : ${availableTLS}\nRéférences :\n${refsList}`
+
       ganttTasks.push({
         key: `osmose-${group.key}-${Date.now()}-${Math.random()}`,
         label: `${group.name} : Osmose ${availableTLS}`,
         startMinute: osmoseStart,
         durationMinutes: osmoseDuration,
         color: getNextColor("osmose"),
+        details: groupDetails,
       })
 
       const powderDuration = computePowderTime(chunkMass)
@@ -1109,6 +1135,7 @@ export const runMultiCommandSimulation = (
         startMinute: timePowderFree,
         durationMinutes: powderDuration + pastoDuration,
         color: getNextColor("pasto"),
+        details: groupDetails,
       })
 
       // Lavage TLS immediately after pasto is empty
@@ -1466,6 +1493,7 @@ export const runMultiCommandSimulation = (
       color: t.color,
       label: t.label,
       shortLabel: shortLabelFn(t),
+      details: t.details,
     })).sort((a, b) => a.startMinute - b.startMinute)
 
     const startMin = Math.min(...matchingTasks.map(t => t.startMinute))
@@ -1512,19 +1540,27 @@ const orderSlice = createSlice({
   initialState,
   reducers: {
     // Multi-command lifecycle management
-    addCommand(state, action: PayloadAction<{ startDate: string; expectedEndDate: string; refName: string; potsQty: number; gramPerPot: number }>) {
-      const { startDate, expectedEndDate, refName, potsQty, gramPerPot } = action.payload
+    addCommand(state, action: PayloadAction<{ name: string; startDate: string; expectedEndDate: string; references: { refName: string; potsQty: number; gramPerPot: number }[] }>) {
+      const { name, startDate, expectedEndDate, references } = action.payload
       const nextIdx = state.commands.length + 1
-      const newCmd = initialCommand(`cmd-${Date.now()}`, `Commande ${nextIdx}`, {
+      const cmdName = name || `Commande ${nextIdx}`
+      const newCmd = initialCommand(`cmd-${Date.now()}`, cmdName, {
         startDate,
         expectedEndDate,
-        references: [{
-          id: `ref-${Date.now()}`,
-          name: refName,
-          potsQty,
-          gramPerPot,
-          milkType: refName.toLowerCase().includes("skyr") ? "fcv3" : "bio"
-        }]
+        references: (references || []).map((r, i) => {
+          let milkType: MilkType = "montagne"
+          const n = r.refName.toLowerCase()
+          if (n.includes("skyr")) milkType = "fcv3"
+          else if (n.includes("nature") || n.includes("bio")) milkType = "bio"
+          else if (n.includes("val de praz") || n.includes("vdp")) milkType = "savoie"
+          return {
+            id: `ref-${Date.now()}-${i}`,
+            name: r.refName,
+            potsQty: r.potsQty,
+            gramPerPot: r.gramPerPot,
+            milkType
+          }
+        })
       })
       state.commands.push(newCmd)
       state.activeCommandId = newCmd.id
@@ -1553,6 +1589,26 @@ const orderSlice = createSlice({
       }
       syncActiveCommandToRoot(state)
       state.simulationDone = false
+    },
+    completeCommand(state, action: PayloadAction<string>) {
+      const toCompleteId = action.payload
+      const cmdIndex = state.commands.findIndex(c => c.id === toCompleteId)
+      if (cmdIndex !== -1) {
+        const cmd = state.commands[cmdIndex]
+        cmd.status = "dispatched"
+        state.completedCommands.push(cmd)
+        state.commands.splice(cmdIndex, 1)
+
+        if (state.commands.length > 0) {
+          if (state.activeCommandId === toCompleteId) {
+            state.activeCommandId = state.commands[0].id
+          }
+        } else {
+          state.activeCommandId = ""
+        }
+        syncActiveCommandToRoot(state)
+        state.simulationDone = false
+      }
     },
     setActiveCommand(state, action: PayloadAction<string>) {
       state.activeCommandId = action.payload
@@ -1831,23 +1887,32 @@ const orderSlice = createSlice({
         }
 
         // If still need volume, assign new tanks
-        if (remainingVolume > 0) {
+        while (remainingVolume > 0) {
+          let allocatedInCycle = false
           for (let tank of availableTanks) {
             const tState = tankStates[tank.name as keyof typeof tankStates]
             if (tState.remaining === 0 && remainingVolume > 0) {
-              cmd.selectedTLSs.push(tank.name)
+              if (!cmd.selectedTLSs.includes(tank.name)) {
+                cmd.selectedTLSs.push(tank.name)
+              }
               const capacity = tank.capacity
               tState.milkType = cmdMilkType
 
               if (capacity >= remainingVolume) {
-                cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] = Number(remainingVolume.toFixed(3))
+                cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] = Number((cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] || 0) + remainingVolume).toFixed(3) as any
                 tState.remaining = capacity - remainingVolume
                 remainingVolume = 0
               } else {
-                cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] = Number(capacity.toFixed(3))
+                cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] = Number((cmd.tlsVolumes[tank.name.toLowerCase() as keyof typeof cmd.tlsVolumes] || 0) + capacity).toFixed(3) as any
                 remainingVolume -= capacity
                 tState.remaining = 0
               }
+              allocatedInCycle = true
+            }
+          }
+          if (!allocatedInCycle) {
+            for (let tank of availableTanks) {
+              tankStates[tank.name as keyof typeof tankStates].remaining = 0
             }
           }
         }
@@ -2087,6 +2152,7 @@ export const {
   addCommand,
   updateCommandName,
   deleteCommand,
+  completeCommand,
   setActiveCommand,
   setCommandMilkType,
   addReference,

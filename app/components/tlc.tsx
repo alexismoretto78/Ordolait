@@ -19,7 +19,7 @@ export default function TLC() {
   const dispatch = useDispatch()
   const { tlcBatches, milkOrders } = useSelector((state: RootState) => state.order)
 
-  const [activeSubTab, setActiveSubTab] = useState<"commande" | "ajouter" | "reception" | "gestion">("commande")
+  const [activeSubTab, setActiveSubTab] = useState<"commande" | "ajouter" | "reception" | "gestion" | "recues">("commande")
 
   // State for Add Milk Order
   const [newOrderType, setNewOrderType] = useState<MilkType>("bio")
@@ -55,6 +55,7 @@ export default function TLC() {
   }, [realQty, selectedOrderId, milkOrders])
 
   const pendingOrders = milkOrders.filter(o => o.status === "pending").sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime())
+  const receivedOrders = milkOrders.filter(o => o.status === "received").sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime())
 
   const handleAddOrder = (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,6 +120,7 @@ export default function TLC() {
         <button onClick={() => setActiveSubTab("commande")} className={`btn ${activeSubTab === "commande" ? "btn-primary" : "btn-secondary"}`}>Commandes à venir</button>
         <button onClick={() => setActiveSubTab("ajouter")} className={`btn ${activeSubTab === "ajouter" ? "btn-primary" : "btn-secondary"}`}>➕ Ajouter une commande</button>
         <button onClick={() => setActiveSubTab("reception")} className={`btn ${activeSubTab === "reception" ? "btn-primary" : "btn-secondary"}`}>Réception en cours</button>
+        <button onClick={() => setActiveSubTab("recues")} className={`btn ${activeSubTab === "recues" ? "btn-primary" : "btn-secondary"}`}>Commandes reçues</button>
         <button onClick={() => setActiveSubTab("gestion")} className={`btn ${activeSubTab === "gestion" ? "btn-primary" : "btn-secondary"}`}>Gestion des TLC/TLP</button>
       </div>
 
@@ -144,6 +146,35 @@ export default function TLC() {
                   <button onClick={() => { setSelectedOrderId(o.id); setActiveSubTab("reception"); }} className="btn btn-success" style={{ padding: "6px 12px", fontSize: "0.8rem" }}>
                     Réceptionner
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* COMMANDES RECUES */}
+      {activeSubTab === "recues" && (
+        <div>
+          {receivedOrders.length === 0 ? (
+            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+              Aucune commande de lait reçue.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {receivedOrders.map(o => (
+                <div key={o.id} style={{ border: "1px solid var(--border-color)", padding: "16px", borderRadius: "var(--radius-md)", backgroundColor: "#f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <h4 style={{ margin: "0 0 4px 0", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "8px" }}>
+                      {o.supplier || "Fournisseur Inconnu"}
+                      <span style={{ fontSize: "0.8rem", backgroundColor: "var(--success)", color: "white", padding: "2px 6px", borderRadius: "4px" }}>Reçue</span>
+                    </h4>
+                    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
+                      <span><strong>Type :</strong> {o.milkType}</span>
+                      <span><strong>Date :</strong> {new Date(o.scheduledDate).toLocaleString()}</span>
+                      <span><strong>Quantité reçue :</strong> {o.receivedQuantity?.toLocaleString()} L</span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

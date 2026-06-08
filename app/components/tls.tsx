@@ -69,8 +69,7 @@ export default function TLS() {
   const volumeForTLS = isDirectSkyr ? classicMilkReceivedVolume : activeCommand.milkReceivedVolume
 
   const selectedCapacity = activeCommand.selectedTLSs.reduce((total, name) => {
-    const tank = TLS_TANKS.find((t) => t.name === name)
-    return total + (tank?.capacity ?? 0)
+    return total + (activeCommand.tlsVolumes[name.toLowerCase() as keyof typeof activeCommand.tlsVolumes] || 0)
   }, 0)
 
   const remaining = Math.max(0, volumeForTLS - selectedCapacity)
@@ -180,6 +179,8 @@ export default function TLS() {
             {TLS_TANKS.map((tank) => {
               const selected = activeCommand.selectedTLSs.includes(tank.name)
               const cmdsUsingTank = commands.filter(c => c.selectedTLSs.includes(tank.name))
+              const allocatedVol = activeCommand.tlsVolumes[tank.name.toLowerCase() as keyof typeof activeCommand.tlsVolumes] || 0
+              const fills = Math.ceil(allocatedVol / tank.capacity)
               
               return (
                 <div key={tank.name} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -188,9 +189,14 @@ export default function TLS() {
                     onClick={() => dispatch(toggleTLSSelection(tank.name))}
                     disabled={volumeForTLS <= 0 && !selected}
                     className={`tank-button ${selected ? "active" : ""}`}
-                    style={{ width: "100%", margin: 0 }}
+                    style={{ width: "100%", margin: 0, padding: "12px", minHeight: "60px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px" }}
                   >
-                    {tank.name} ({tank.capacity} L)
+                    <span>{tank.name} ({tank.capacity} L)</span>
+                    {selected && allocatedVol > 0 && (
+                      <span style={{ fontSize: "0.85rem", opacity: 0.9, fontWeight: 700 }}>
+                        {allocatedVol.toFixed(1)} L {fills > 1 ? `(${fills} remplissages)` : ""}
+                      </span>
+                    )}
                   </button>
                   {cmdsUsingTank.length > 0 && (
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: "4px 8px", background: "var(--bg-app)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)" }}>

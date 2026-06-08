@@ -157,7 +157,7 @@ export default function Gantt() {
                                         borderLeft: "1px solid rgba(0, 0, 0, 0.15)",
                                         borderRight: "1px solid rgba(0, 0, 0, 0.15)",
                                       }}
-                                      title={`${seg.label || task.label} (Début: +${formatTime(seg.startMinute)})`}
+                                      title={`${seg.label || task.label} (Début: +${formatTime(seg.startMinute)})\n${seg.details || task.details || ""}`.trim()}
                                     >
                                       {task.segments ? displayText : `+${formatTime(task.startMinute)}`}
                                     </div>

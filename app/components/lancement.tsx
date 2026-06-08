@@ -7,6 +7,7 @@ import {
   setRefDestination,
   setRefPotsLaunched,
   launchRefToMachine,
+  setActiveCommand,
 } from "../lib/orderSlice"
 import { useState, useEffect } from "react"
 
@@ -98,31 +99,55 @@ export default function Lancement() {
       
       {/* active command header */}
       <div className="card" style={{ borderLeft: "4px solid var(--primary)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>PILOTAGE MACHINE</span>
             <h2 style={{ margin: 0, paddingBottom: 0, borderBottom: "none", marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              🚀 Lancement sur Machines — {activeCommand.name}
-              {activeCommand.isSkyr && (
-                <span style={{ fontSize: "0.75rem", padding: "4px 10px", borderRadius: "12px", backgroundColor: "var(--violet)", color: "#ffffff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  🥣 Recette Skyr
-                </span>
-              )}
+              🚀 Lancement sur Machines
             </h2>
           </div>
           
-          <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: "8px" }}>
             {commands.map((cmd) => {
               const isActive = cmd.id === activeCommandId
               return (
                 <button
                   key={cmd.id}
                   type="button"
-                  onClick={() => dispatch(setRefDestination({ cmdId: activeCommandId, refId: "", destination: "both" })) /* trick to trigger rerender if needed but simpler: just dispatch setactivecommand */}
+                  onClick={() => dispatch(setActiveCommand(cmd.id))}
                   style={{
-                    display: "none" // We don't need this, page.tsx handles switching active command!
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    padding: "12px 16px",
+                    borderRadius: "var(--radius-md)",
+                    border: isActive ? "2px solid var(--primary)" : "1px solid var(--border-color)",
+                    backgroundColor: isActive ? "var(--primary-light)" : "white",
+                    cursor: "pointer",
+                    minWidth: "220px",
+                    transition: "all 0.2s ease-in-out",
+                    boxShadow: isActive ? "0 4px 12px rgba(59, 130, 246, 0.15)" : "none"
                   }}
-                />
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+                    <span style={{ fontWeight: 800, fontSize: "0.95rem", color: isActive ? "var(--primary)" : "var(--text-color)" }}>{cmd.name}</span>
+                    {cmd.isSkyr && (
+                      <span style={{ fontSize: "0.65rem", padding: "2px 6px", borderRadius: "8px", backgroundColor: "var(--violet)", color: "#ffffff", fontWeight: 800 }}>
+                        SKYR
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, marginTop: 4 }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span>🥛</span> {cmd.whiteMassKg.toFixed(0)} kg (Maturation)
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span>🏭</span> CF: {cmd.selectedCFs.length > 0 ? cmd.selectedCFs.join(", ") : "Aucune"}
+                    </span>
+                  </div>
+                </button>
               )
             })}
           </div>
