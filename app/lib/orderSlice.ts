@@ -95,6 +95,7 @@ export type CommandSimResult = {
   firstTankMaturationEnd?: number
   firstTankEmptyEnd?: number
   referencesResults?: { refId: string; name: string; start: number; end: number }[]
+  error?: string
 }
 
 export type GanttSegment = {
