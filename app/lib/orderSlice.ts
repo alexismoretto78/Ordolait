@@ -1577,6 +1577,36 @@ const orderSlice = createSlice({
       }
       state.simulationDone = false
     },
+    updateCommand(state, action: PayloadAction<{ id: string; name?: string; startDate?: string; expectedEndDate?: string; references?: { refName: string; potsQty: number; gramPerPot: number }[] }>) {
+      const { id, name, startDate, expectedEndDate, references } = action.payload
+      const cmd = state.commands.find(c => c.id === id)
+      if (cmd) {
+        if (name !== undefined) cmd.name = name
+        if (startDate !== undefined) cmd.startDate = startDate
+        if (expectedEndDate !== undefined) cmd.expectedEndDate = expectedEndDate
+        if (references !== undefined) {
+          cmd.references = references.map((r, i) => {
+            let milkType: MilkType = "montagne"
+            const n = r.refName.toLowerCase()
+            if (n.includes("skyr")) milkType = "fcv3"
+            else if (n.includes("nature") || n.includes("bio")) milkType = "bio"
+            else if (n.includes("val de praz") || n.includes("vdp")) milkType = "savoie"
+            return {
+              id: `ref-${Date.now()}-${i}`,
+              name: r.refName,
+              potsQty: r.potsQty,
+              gramPerPot: r.gramPerPot,
+              milkType
+            }
+          })
+        }
+        recalculateActiveCommandMetrics(state, cmd)
+        if (state.activeCommandId === cmd.id) {
+          syncActiveCommandToRoot(state)
+        }
+      }
+      state.simulationDone = false
+    },
     deleteCommand(state, action: PayloadAction<string>) {
       const toDelete = action.payload
       state.commands = state.commands.filter(c => c.id !== toDelete)
@@ -2152,6 +2182,7 @@ const orderSlice = createSlice({
 export const {
   addCommand,
   updateCommandName,
+  updateCommand,
   deleteCommand,
   completeCommand,
   setActiveCommand,
