@@ -35,7 +35,7 @@ describe('orderSlice reducer', () => {
 
   it('should handle addCommand', () => {
     const initialCommandsCount = initialState.commands.length;
-    const newState = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
+    const newState = orderReducer(initialState, addCommand({ name: "Cmd Test", startDate: "2024-01-01T10:00", expectedEndDate: "", references: [{ refName: "Test", potsQty: 1000, gramPerPot: 125 }] }));
     
     expect(newState.commands.length).toBe(initialCommandsCount + 1);
     const addedCommand = newState.commands[newState.commands.length - 1];
@@ -58,7 +58,7 @@ describe('orderSlice reducer', () => {
 
   it('should handle deleteCommand', () => {
     // First add a command to ensure we have at least 2
-    const stateWithTwo = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
+    const stateWithTwo = orderReducer(initialState, addCommand({ name: "Cmd Test", startDate: "2024-01-01T10:00", expectedEndDate: "", references: [{ refName: "Test", potsQty: 1000, gramPerPot: 125 }] }));
     const initialCount = stateWithTwo.commands.length;
     const commandToDelete = stateWithTwo.commands[stateWithTwo.commands.length - 1].id;
     
@@ -69,7 +69,7 @@ describe('orderSlice reducer', () => {
   });
 
   it('should handle setActiveCommand', () => {
-    const stateWithTwo = orderReducer(initialState, addCommand({ startDate: "2024-01-01T10:00", expectedEndDate: "", refName: "Test", potsQty: 1000, gramPerPot: 125 }));
+    const stateWithTwo = orderReducer(initialState, addCommand({ name: "Cmd Test", startDate: "2024-01-01T10:00", expectedEndDate: "", references: [{ refName: "Test", potsQty: 1000, gramPerPot: 125 }] }));
     const firstCommandId = stateWithTwo.commands[0].id;
     const secondCommandId = stateWithTwo.commands[1].id;
     

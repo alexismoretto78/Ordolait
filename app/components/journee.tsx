@@ -157,7 +157,7 @@ export default function Journee() {
       <div style={{ padding: "20px" }}>
         {!simulationResults && (
            <div style={{ padding: "10px", backgroundColor: "var(--warning)", color: "white", borderRadius: "8px", marginBottom: "20px", fontWeight: "bold" }}>
-             ⚠️ Lancez la simulation dans l'onglet "Simulation & Gantt" pour avoir un résumé précis de la journée incluant les temps de production.
+             {"⚠️ Lancez la simulation dans l'onglet \"Simulation & Gantt\" pour avoir un résumé précis de la journée incluant les temps de production."}
            </div>
         )}
 
