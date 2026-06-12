@@ -12,11 +12,12 @@ import Cuve from "./components/cuve"
 import Lancement from "./components/lancement"
 import Gantt from "./components/gantt"
 import Simulation from "./components/simulation"
+import Journee from "./components/journee"
 
 export default function Home() {
   const dispatch = useDispatch()
   const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"tlc" | "commandes" | "production" | "lancement" | "simulation">("commandes")
+  const [activeTab, setActiveTab] = useState<"journee" | "tlc" | "commandes" | "production" | "lancement" | "simulation">("commandes")
 
   useEffect(() => {
     dispatch(completeSimulation())
@@ -28,7 +29,7 @@ export default function Home() {
     }
   }, [commands.length])
 
-  const handleTabChange = (tab: "tlc" | "commandes" | "production" | "lancement" | "simulation") => {
+  const handleTabChange = (tab: "journee" | "tlc" | "commandes" | "production" | "lancement" | "simulation") => {
     setActiveTab(tab)
   }
 
@@ -211,6 +212,30 @@ export default function Home() {
           >
             <span>📊</span> Simulation & Gantt
           </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabChange("journee")}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              padding: "12px 16px",
+              borderRadius: "var(--radius-md)",
+              border: "none",
+              fontSize: "0.9rem",
+              fontWeight: activeTab === "journee" ? "700" : "500",
+              backgroundColor: activeTab === "journee" ? "var(--primary)" : "transparent",
+              color: activeTab === "journee" ? "#ffffff" : "var(--text-muted)",
+              cursor: "pointer",
+              transition: "var(--transition)",
+              boxShadow: activeTab === "journee" ? "var(--shadow-md)" : "none",
+            }}
+          >
+            <span>📅</span> Journée
+          </button>
         </div>
       )}
 
@@ -263,6 +288,14 @@ export default function Home() {
 
           <section className="full-width-section">
             <Simulation />
+          </section>
+        </div>
+      )}
+
+      {activeTab === "journee" && (
+        <div className="dashboard-grid">
+          <section className="full-width-section">
+            <Journee />
           </section>
         </div>
       )}
