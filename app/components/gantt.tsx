@@ -26,12 +26,13 @@ export default function Gantt() {
 
   const totalReceivedVolume = commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
   
-  let totalMilkAvailable = 0
-  Object.values(tlcBatches).forEach(tankBatches => {
-    totalMilkAvailable += tankBatches.reduce((sum, b) => sum + b.volume, 0)
-  })
+  const milkShortages = simulationResults?.milkShortages || {}
+  const isMilkShortage = Object.keys(milkShortages).length > 0
   
-  const isMilkShortage = totalReceivedVolume > totalMilkAvailable
+  const formatMilkType = (str: string) => {
+    const map: Record<string, string> = { bio: "Bio", fcv3: "FCV3", savoie: "Savoie", montagne: "Montagne", creme: "Crème", ecreme_savoie: "Écrémé Savoie", ecreme_montagne: "Écrémé Montagne" }
+    return str.split(" / ").map(s => map[s] || s).join(" ou ")
+  }
 
   const totalDuration = simulationResults?.totalDurationMinutes || 0
   const tasks = simulationResults?.ganttTasks || []
@@ -50,13 +51,30 @@ export default function Gantt() {
       <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
           {isMilkShortage && (
-            <button
-               type="button"
-               onClick={() => setShowTLCPopup(true)}
-               style={{ backgroundColor: "var(--danger)", color: "white", padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: "bold" }}
-            >
-              ⚠️ Quantité de lait insuffisante. Compléter le stock (TLC)
-            </button>
+            <div style={{ backgroundColor: "var(--danger)", color: "white", padding: "16px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxShadow: "var(--shadow-md)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <span style={{ fontWeight: "bold", fontSize: "1.1rem" }}>⚠️ Quantité de lait insuffisante.</span>
+                <button
+                   type="button"
+                   onClick={() => setShowTLCPopup(true)}
+                   style={{ backgroundColor: "white", color: "var(--danger)", padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "0.95rem", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", transition: "transform 0.1s" }}
+                   onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
+                   onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+                >
+                  Compléter le stock (TLC)
+                </button>
+              </div>
+              <div style={{ backgroundColor: "rgba(0, 0, 0, 0.15)", borderRadius: "8px", padding: "12px" }}>
+                <span style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: "0.95rem" }}>Détail des manquants estimés pour la production :</span>
+                <ul style={{ margin: 0, paddingLeft: 20, fontSize: "0.95rem", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {Object.entries(milkShortages).map(([type, amount]) => (
+                    <li key={type}>
+                      <strong>Lait {formatMilkType(type)} : </strong> {Math.round(amount).toLocaleString("fr-FR")} Litres
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
         </div>
 

@@ -127,6 +127,7 @@ export type MultiCommandSimResults = {
     tlc4: Batch[]
   }
   ganttTasks: GanttTask[]
+  milkShortages?: { [typeList: string]: number }
 }
 
 export type MilkType = "bio" | "fcv3" | "savoie" | "montagne" | "creme" | "ecreme_savoie" | "ecreme_montagne"
@@ -835,6 +836,7 @@ export const runMultiCommandSimulation = (
 
   const readyTanks: { [type: string]: { cfName: string, readyTime: number, volume: number }[] } = {}
   const typesToProduce: any[] = []
+  const milkShortages: { [type: string]: number } = {}
 
   commands.forEach(cmd => {
     const groups = {
@@ -996,6 +998,13 @@ export const runMultiCommandSimulation = (
       const targetVal = 41
       const reqRaw = chunkMass * (targetVal / 33.0)
       const { actualDrawn, totalProtDrawn, lastTypeDrawn, milkAvailableAt, emptiedTLCs } = drawMilk(reqRaw, group.preferredTypes)
+      
+      if (actualDrawn < reqRaw) {
+        const shortage = reqRaw - actualDrawn
+        const typeKey = group.preferredTypes.join(" / ")
+        milkShortages[typeKey] = (milkShortages[typeKey] || 0) + shortage
+      }
+
       const ci = actualDrawn > 0 ? totalProtDrawn / actualDrawn : 33.0
 
       const transferDuration = computeTransferTime(actualDrawn)
@@ -1534,6 +1543,7 @@ export const runMultiCommandSimulation = (
     commandsResults,
     tlcRemainingBatches: tlcBatches,
     ganttTasks: finalGanttTasks,
+    milkShortages,
   }
 }
 const orderSlice = createSlice({
