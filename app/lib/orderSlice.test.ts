@@ -39,7 +39,7 @@ describe('orderSlice reducer', () => {
     
     expect(newState.commands.length).toBe(initialCommandsCount + 1);
     const addedCommand = newState.commands[newState.commands.length - 1];
-    expect(addedCommand.name).toMatch(/Commande \d+/);
+    expect(addedCommand.name).toBe("Cmd Test");
     // It should automatically set the new command as active
     expect(newState.activeCommandId).toBe(addedCommand.id);
   });

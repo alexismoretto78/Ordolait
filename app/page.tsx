@@ -6,30 +6,19 @@ import { RootState } from "./lib/store"
 import { setActiveCommand, completeSimulation } from "./lib/orderSlice"
 import TLC from "./components/tlc"
 import Commande from "./components/commande"
-import Osmose from "./components/osmose"
-import TLS from "./components/tls"
-import Cuve from "./components/cuve"
-import Lancement from "./components/lancement"
-import Gantt from "./components/gantt"
-import Simulation from "./components/simulation"
 import Journee from "./components/journee"
+import Gantt from "./components/gantt"
 
 export default function Home() {
   const dispatch = useDispatch()
   const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"journee" | "tlc" | "commandes" | "production" | "lancement" | "simulation">("commandes")
+  const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning">("tableau_de_bord")
 
   useEffect(() => {
     dispatch(completeSimulation())
   }, [commands, tlcBatches, needs48hWash, needsC3Wash, dispatch])
 
-  useEffect(() => {
-    if (commands.length === 0) {
-      setActiveTab("commandes")
-    }
-  }, [commands.length])
-
-  const handleTabChange = (tab: "journee" | "tlc" | "commandes" | "production" | "lancement" | "simulation") => {
+  const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning") => {
     setActiveTab(tab)
   }
 
@@ -48,7 +37,7 @@ export default function Home() {
             <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>
               Commande active :
             </span>
-            <select 
+            <select
               value={activeCommandId}
               onChange={(e) => dispatch(setActiveCommand(e.target.value))}
               style={{
@@ -73,177 +62,127 @@ export default function Home() {
       </header>
 
       {/* Premium Tab Navigation Menu */}
-      {commands.length > 0 && (
-        <div 
-          className="mobile-tab-bar"
-          style={{ 
-            display: "flex", 
-            justifyContent: "center", 
-            marginBottom: "36px",
-            background: "rgba(255, 255, 255, 0.9)",
-            backdropFilter: "blur(16px)",
-            padding: "6px",
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--border-color)",
-            boxShadow: "var(--shadow-md)",
-            maxWidth: "960px",
-            margin: "0 auto 36px auto",
-            position: "sticky",
-            top: "20px",
-            zIndex: 100
+      <div
+        className="mobile-tab-bar"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          marginBottom: "36px",
+          background: "rgba(255, 255, 255, 0.9)",
+          backdropFilter: "blur(16px)",
+          padding: "6px",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--border-color)",
+          boxShadow: "var(--shadow-md)",
+          maxWidth: "700px",
+          margin: "0 auto 36px auto",
+          position: "sticky",
+          top: "20px",
+          zIndex: 100
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => handleTabChange("tableau_de_bord")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "tableau_de_bord" ? "700" : "500",
+            backgroundColor: activeTab === "tableau_de_bord" ? "var(--primary)" : "transparent",
+            color: activeTab === "tableau_de_bord" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "tableau_de_bord" ? "var(--shadow-md)" : "none",
           }}
         >
-          <button
-            type="button"
-            onClick={() => handleTabChange("commandes")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "commandes" ? "700" : "500",
-              backgroundColor: activeTab === "commandes" ? "var(--primary)" : "transparent",
-              color: activeTab === "commandes" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "commandes" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>📋</span> Commandes Clients
-          </button>
+          <span>📊</span> Tableau de bord
+        </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange("tlc")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "tlc" ? "700" : "500",
-              backgroundColor: activeTab === "tlc" ? "var(--primary)" : "transparent",
-              color: activeTab === "tlc" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "tlc" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>🥛</span> Réception & Lots TLC
-          </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("planning")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "planning" ? "700" : "500",
+            backgroundColor: activeTab === "planning" ? "var(--primary)" : "transparent",
+            color: activeTab === "planning" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "planning" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>📈</span> Planning Gantt
+        </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange("production")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "production" ? "700" : "500",
-              backgroundColor: activeTab === "production" ? "var(--primary)" : "transparent",
-              color: activeTab === "production" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "production" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>🏭</span> Flux de Production
-          </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("commandes")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "commandes" ? "700" : "500",
+            backgroundColor: activeTab === "commandes" ? "var(--primary)" : "transparent",
+            color: activeTab === "commandes" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "commandes" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>📋</span> Commandes
+        </button>
 
-          <button
-            type="button"
-            onClick={() => handleTabChange("lancement")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "lancement" ? "700" : "500",
-              backgroundColor: activeTab === "lancement" ? "var(--primary)" : "transparent",
-              color: activeTab === "lancement" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "lancement" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>🚀</span> Pilotage Machines
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabChange("simulation")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "simulation" ? "700" : "500",
-              backgroundColor: activeTab === "simulation" ? "var(--primary)" : "transparent",
-              color: activeTab === "simulation" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "simulation" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>📊</span> Simulation & Gantt
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabChange("journee")}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "var(--radius-md)",
-              border: "none",
-              fontSize: "0.9rem",
-              fontWeight: activeTab === "journee" ? "700" : "500",
-              backgroundColor: activeTab === "journee" ? "var(--primary)" : "transparent",
-              color: activeTab === "journee" ? "#ffffff" : "var(--text-muted)",
-              cursor: "pointer",
-              transition: "var(--transition)",
-              boxShadow: activeTab === "journee" ? "var(--shadow-md)" : "none",
-            }}
-          >
-            <span>📅</span> Journée
-          </button>
-        </div>
-      )}
+        <button
+          type="button"
+          onClick={() => handleTabChange("reception")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "reception" ? "700" : "500",
+            backgroundColor: activeTab === "reception" ? "var(--primary)" : "transparent",
+            color: activeTab === "reception" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "reception" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>🥛</span> Réception
+        </button>
+      </div>
 
       {/* Tab Contents */}
-      {activeTab === "tlc" && (
+      {activeTab === "tableau_de_bord" && (
         <div className="dashboard-grid">
           <section className="full-width-section">
-            <TLC />
+            <Journee />
           </section>
         </div>
       )}
@@ -256,46 +195,18 @@ export default function Home() {
         </div>
       )}
 
-      {activeTab === "production" && (
-        <div className="dashboard-grid">
-          <section>
-            <TLS />
-          </section>
-
-          <section>
-            <Osmose />
-          </section>
-
-          <section className="full-width-section">
-            <Cuve />
-          </section>
-        </div>
-      )}
-
-      {activeTab === "lancement" && (
-        <div className="dashboard-grid">
-          <section className="full-width-section">
-            <Lancement />
-          </section>
-        </div>
-      )}
-
-      {activeTab === "simulation" && (
+      {activeTab === "planning" && (
         <div className="dashboard-grid">
           <section className="full-width-section">
             <Gantt />
           </section>
-
-          <section className="full-width-section">
-            <Simulation />
-          </section>
         </div>
       )}
 
-      {activeTab === "journee" && (
+      {activeTab === "reception" && (
         <div className="dashboard-grid">
           <section className="full-width-section">
-            <Journee />
+            <TLC />
           </section>
         </div>
       )}

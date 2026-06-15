@@ -132,6 +132,46 @@ export type MultiCommandSimResults = {
 
 export type MilkType = "bio" | "fcv3" | "savoie" | "montagne" | "creme" | "ecreme_savoie" | "ecreme_montagne"
 
+export const milkTypeConfigs: Record<string, any> = {
+  bio: { label: "Bio", color: "var(--success)", gradient: "linear-gradient(180deg, #86efac 0%, #22c55e 100%)", emoji: "🌱" },
+  fcv3: { label: "FCV3", color: "var(--primary)", gradient: "linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%)", emoji: "🐄" },
+  savoie: { label: "Savoie", color: "var(--info)", gradient: "linear-gradient(180deg, #67e8f9 0%, #06b6d4 100%)", emoji: "🏔️" },
+  montagne: { label: "Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #c4b5fd 0%, #8b5cf6 100%)", emoji: "⛰️" },
+  creme: { label: "Crème", color: "var(--danger)", gradient: "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)", emoji: "🧈" },
+  ecreme_savoie: { label: "Écrémé Savoie", color: "var(--warning)", gradient: "linear-gradient(180deg, #fde68a 0%, #f59e0b 100%)", emoji: "💧" },
+  ecreme_montagne: { label: "Écrémé Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)", emoji: "💧" }
+}
+
+export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours"
+export type CfStatus = "vide" | "remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours"
+
+export type TlsExecution = {
+  commandId?: string;
+  status: TlsStatus;
+  currentVolume: number;
+  permeatVolume?: number;
+  fcvApplied?: number;
+  times: {
+    transferEnd?: string;
+    osmoseStart?: string;
+    osmoseEnd?: string;
+    pastoStart?: string;
+    pastoEnd?: string;
+  }
+}
+
+export type CfExecution = {
+  commandId?: string;
+  status: CfStatus;
+  currentVolume: number;
+  times: {
+    remplissageStart?: string;
+    maturationStart?: string;
+    maturationEnd?: string;
+    soutirageStart?: string;
+  }
+}
+
 export type OrderState = {
   orderQty: number
   gramPerPot: number
@@ -190,6 +230,10 @@ export type OrderState = {
   completedCommands: Command[]
 
   milkOrders: MilkOrder[]
+
+  // Execution States
+  tlsExecution: { [tlsName: string]: TlsExecution }
+  cfExecution: { [cfName: string]: CfExecution }
 }
 
 const initialCommand = (id: string, name: string, overrides?: Partial<Command>): Command => {
@@ -321,7 +365,20 @@ const initialState: OrderState = {
   activeCommandId: "cmd-1",
   completedCommands: [],
 
-  milkOrders: [],
+  milkOrders: [
+    { id: "mo-1", milkType: "bio", supplier: "Ferme Bio A", scheduledDate: new Date(Date.now() + 86400000).toISOString().slice(0, 16), quantity: 25000, status: "pending" },
+    { id: "mo-2", milkType: "savoie", supplier: "Coopérative Savoie", scheduledDate: new Date(Date.now() + 172800000).toISOString().slice(0, 16), quantity: 30000, status: "pending" },
+  ],
+
+  tlsExecution: {
+    "TLS1": { status: "vide", currentVolume: 0, times: {} },
+    "TLS2": { status: "vide", currentVolume: 0, times: {} },
+    "TLS3": { status: "vide", currentVolume: 0, times: {} },
+  },
+  cfExecution: ["CF1", "CF2", "CF3", "CF4", "CF5", "CF10", "CF11", "CF12", "CF13", "CF14", "CF15", "CF20"].reduce((acc, name) => {
+    acc[name] = { status: "vide", currentVolume: 0, times: {} };
+    return acc;
+  }, {} as { [key: string]: CfExecution }),
 }
 
 export const getTLCStats = (batches: Batch[]) => {
@@ -502,7 +559,8 @@ export const distributeToTLS = (totalVolume: number) => {
       const tank = TLS_TANKS.find((t) => t.name === tankName)
       const capacity = tank ? tank.capacity : 0
 
-      const take = Math.min(remaining, capacity)
+      const availableCapacity = capacity - alloc[key]
+      const take = Math.min(remaining, availableCapacity)
       if (take > 0) {
         alloc[key] = Number((alloc[key] + take).toFixed(3))
         remaining = Number((remaining - take).toFixed(3))
@@ -711,14 +769,11 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
   }
 
   // 3. Compute volumes independently
+  // Skyr is neither osmosed nor powdered. It is directly pasteurized.
   if (skyrWhiteMass > 0) {
-    if (active.skyrMilkType === "fcv3" && active.skyrDirectPasto) {
-      totalMilkReceivedVolume += skyrWhiteMass
-      totalOsmosedVolume += skyrWhiteMass
-      totalProtReceived += skyrWhiteMass * skyrCi
-    } else {
-      processGroup(skyrWhiteMass, skyrCi)
-    }
+    totalMilkReceivedVolume += skyrWhiteMass
+    // We do NOT add to totalOsmosedVolume so it doesn't get powdered
+    totalProtReceived += skyrWhiteMass * skyrCi
   }
 
   processGroup(baikoMddWhiteMass, baikoMddCi)
@@ -727,6 +782,15 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
 
   active.milkReceivedVolume = totalMilkReceivedVolume
   active.osmosedVolume = totalOsmosedVolume
+
+  const classicMax = Math.max(baikoMddWhiteMass, vdpWhiteMass, natureWhiteMass)
+  if (classicMax > 0) {
+    if (classicMax === vdpWhiteMass) active.milkType = "savoie"
+    else if (classicMax === baikoMddWhiteMass) active.milkType = "montagne"
+    else active.milkType = "bio"
+  } else {
+    active.milkType = active.skyrMilkType || "fcv3"
+  }
 
   const tlsAlloc = distributeToTLS(active.milkReceivedVolume)
   active.tlsVolumes = tlsAlloc
@@ -771,8 +835,12 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
   // 6. Calculate Timing
   // We approximate the global timing based on total volumes to keep UI simple
   active.timing.transferTime = computeTransferTime(active.milkReceivedVolume)
-  active.timing.osmoseTime = computeOsmoseTime(active.milkReceivedVolume, active.milkReceptionValue, active.targetValue)
+  
+  // Skyr skips osmosis and powdering
+  const nonSkyrReceivedVolume = Math.max(0, active.milkReceivedVolume - skyrWhiteMass)
+  active.timing.osmoseTime = computeOsmoseTime(nonSkyrReceivedVolume, active.milkReceptionValue, active.targetValue)
   active.timing.powderTime = computePowderTime(active.osmosedVolume)
+  
   active.timing.pastoTime = computePastoTime(active.whiteMassKg)
   active.timing.maturationTime = DEFAULT_MATURATION_MINUTES
 
@@ -838,48 +906,45 @@ export const runMultiCommandSimulation = (
   const typesToProduce: any[] = []
   const milkShortages: { [type: string]: number } = {}
 
-  commands.forEach(cmd => {
-    const groups = {
-      skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-      baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-      vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-      nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-      autres: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
-    }
+  const globalGroups = {
+    skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+    baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+    vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+    nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
+    autres: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
+  }
 
+  commands.forEach(cmd => {
     cmd.references.forEach(r => {
       const mass = (r.potsQty * r.gramPerPot) / 1000
       const name = r.name.toLowerCase()
       if (name.includes("skyr")) {
-        groups.skyr.whiteMassKg += mass
-        groups.skyr.refs.push({ cmd, ref: r })
-      } else if (name.includes("baiko") || name.includes("mdd")) {
-        groups.baiko_mdd.whiteMassKg += mass / 1.05
-        groups.baiko_mdd.refs.push({ cmd, ref: r })
+        globalGroups.skyr.whiteMassKg += mass
+        globalGroups.skyr.refs.push({ cmd, ref: r })
+      } else if (name.includes("baiko") || name.includes("mdd") || name.includes("nature")) {
+        globalGroups.baiko_mdd.whiteMassKg += mass / 1.05
+        globalGroups.baiko_mdd.refs.push({ cmd, ref: r })
       } else if (name.includes("val de praz") || name.includes("vdp")) {
-        groups.vdp.whiteMassKg += mass / 1.05
-        groups.vdp.refs.push({ cmd, ref: r })
-      } else if (name.includes("nature") || name.includes("bio")) {
-        groups.nature.whiteMassKg += mass
-        groups.nature.refs.push({ cmd, ref: r })
+        globalGroups.vdp.whiteMassKg += mass / 1.05
+        globalGroups.vdp.refs.push({ cmd, ref: r })
+      } else if (name.includes("bio")) {
+        globalGroups.nature.whiteMassKg += mass
+        globalGroups.nature.refs.push({ cmd, ref: r })
       } else {
-        groups.autres.whiteMassKg += mass
-        groups.autres.refs.push({ cmd, ref: r })
+        globalGroups.autres.whiteMassKg += mass
+        globalGroups.autres.refs.push({ cmd, ref: r })
+        if (!commandsResults[cmd.id]) {
+          commandsResults[cmd.id] = { id: cmd.id, name: cmd.name, transferStart: 0, transferEnd: 0, osmoseStart: 0, osmoseEnd: 0, powderStart: 0, powderEnd: 0, pastoStart: 0, pastoEnd: 0, maturationStart: 0, maturationEnd: 0, packagingStart: 999999, packagingEnd: 0, packagingAtiaDuration: 0, packagingGrunDuration: 0, totalDuration: 0 }
+        }
+        commandsResults[cmd.id].error = `Erreur : Recettes inconnues (${globalGroups.autres.refs.filter((x: any) => x.cmd.id === cmd.id).map((x: any) => x.ref.name).join(", ")}). Le lait n'a pas pu être sélectionné et ces produits ne seront pas planifiés.`
       }
     })
-
-    if (groups.skyr.whiteMassKg > 0) typesToProduce.push({ key: `skyr-${cmd.id}`, name: cmd.name, ...groups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true })
-    if (groups.baiko_mdd.whiteMassKg > 0) typesToProduce.push({ key: `baiko_mdd-${cmd.id}`, name: cmd.name, ...groups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false })
-    if (groups.vdp.whiteMassKg > 0) typesToProduce.push({ key: `vdp-${cmd.id}`, name: cmd.name, ...groups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false })
-    if (groups.nature.whiteMassKg > 0) typesToProduce.push({ key: `nature-${cmd.id}`, name: cmd.name, ...groups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false })
-    
-    if (groups.autres.whiteMassKg > 0) {
-      if (!commandsResults[cmd.id]) {
-        commandsResults[cmd.id] = { id: cmd.id, name: cmd.name, transferStart: 0, transferEnd: 0, osmoseStart: 0, osmoseEnd: 0, powderStart: 0, powderEnd: 0, pastoStart: 0, pastoEnd: 0, maturationStart: 0, maturationEnd: 0, packagingStart: 0, packagingEnd: 0, packagingAtiaDuration: 0, packagingGrunDuration: 0, totalDuration: 0 }
-      }
-      commandsResults[cmd.id].error = `Erreur : Recettes inconnues (${groups.autres.refs.map(r => r.ref.name).join(", ")}). Le lait n'a pas pu être sélectionné et ces produits ne seront pas planifiés.`
-    }
   })
+
+  if (globalGroups.skyr.whiteMassKg > 0) typesToProduce.push({ key: `skyr-global`, name: "MB Skyr", ...globalGroups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true })
+  if (globalGroups.baiko_mdd.whiteMassKg > 0) typesToProduce.push({ key: `baiko_mdd-global`, name: "MB Baiko/MDD", ...globalGroups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false })
+  if (globalGroups.vdp.whiteMassKg > 0) typesToProduce.push({ key: `vdp-global`, name: "MB VDP", ...globalGroups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false })
+  if (globalGroups.nature.whiteMassKg > 0) typesToProduce.push({ key: `nature-global`, name: "MB Nature", ...globalGroups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false })
 
   const drawMilk = (reqVol: number, preferredTypes: MilkType[]) => {
     let remainingToDraw = reqVol
@@ -1007,7 +1072,7 @@ export const runMultiCommandSimulation = (
 
       const ci = actualDrawn > 0 ? totalProtDrawn / actualDrawn : 33.0
 
-      const transferDuration = computeTransferTime(actualDrawn)
+      const transferDuration = computeTransferTime(reqRaw)
       const availableTLS = ["TLS1", "TLS2", "TLS3"].sort((a, b) => tlsAvailableAt[a as keyof typeof tlsAvailableAt] - tlsAvailableAt[b as keyof typeof tlsAvailableAt])[0] as keyof typeof tlsAvailableAt
       
       let deliveryDelayMinutes = 0
@@ -1020,10 +1085,12 @@ export const runMultiCommandSimulation = (
       timeTransferFree = transferEnd
       // tlsAvailableAt will be updated after the TLS is washed (after osmosis)
       
-      const currentCmdId = group.refs[0].cmd.id
-      const res = commandsResults[currentCmdId]
-      if (res.transferStart === 0 || transferStart < res.transferStart) res.transferStart = transferStart
-      res.transferEnd = Math.max(res.transferEnd, transferEnd)
+      const uniqueCmdIds = Array.from(new Set(group.refs.map((r: any) => r.cmd.id))) as string[]
+      uniqueCmdIds.forEach(cmdId => {
+        const res = commandsResults[cmdId]
+        if (res.transferStart === 0 || transferStart < res.transferStart) res.transferStart = transferStart
+        res.transferEnd = Math.max(res.transferEnd, transferEnd)
+      })
 
       ganttTasks.push({
         key: `transfer-${group.key}-${Date.now()}-${Math.random()}`,
@@ -1045,55 +1112,62 @@ export const runMultiCommandSimulation = (
 
       // Osmosis Wash Check
       let osmoseWashInserted = false
-      if (timeOsmosisFree > 0 && Math.max(transferEnd, timeOsmosisFree) - timeOsmosisFree >= 60) {
-        const washStart = Math.max(timeOsmosisFree, timeOsmoseWashFree)
-        ganttTasks.push({
-          key: `osm-wash-${group.key}-court-${Math.random()}`,
-          label: `Lavage Osmoseur (COURT)`,
-          startMinute: washStart,
-          durationMinutes: 90,
-          color: "#cbd5e1",
-        })
-        timeOsmoseWashFree = washStart + 90
-        timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
-        osmoseWashInserted = true
-      } else if (osmosisCount >= 3) {
-        const washStart = Math.max(transferEnd, timeOsmosisFree, timeOsmoseWashFree)
-        ganttTasks.push({
-          key: `osm-wash-${group.key}-long-${Math.random()}`,
-          label: `Lavage Osmoseur (LONG)`,
-          startMinute: washStart,
-          durationMinutes: 150,
-          color: "#cbd5e1",
-        })
-        timeOsmoseWashFree = washStart + 150
-        timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
-        osmoseWashInserted = true
-      }
-      if (osmoseWashInserted) osmosisCount = 0
-
-      const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
-      const osmoseDuration = computeOsmoseTime(actualDrawn, ci, targetVal)
-      const osmoseEnd = osmoseStart + osmoseDuration
-      timeOsmosisFree = osmoseEnd
-      osmosisCount++
-
-      if (res.osmoseStart === 0 || osmoseStart < res.osmoseStart) res.osmoseStart = osmoseStart
-      res.osmoseEnd = Math.max(res.osmoseEnd, osmoseEnd)
+      let osmoseEnd = transferEnd
 
       const refsList = group.refs.map((r: any) => `- ${r.ref.name} (${r.ref.potsQty} pots)`).join('\n')
       const groupDetails = `Commande : ${group.name}\nTLS : ${availableTLS}\nRéférences :\n${refsList}`
 
-      ganttTasks.push({
-        key: `osmose-${group.key}-${Date.now()}-${Math.random()}`,
-        label: `${group.name} : Osmose ${availableTLS}`,
-        startMinute: osmoseStart,
-        durationMinutes: osmoseDuration,
-        color: getNextColor("osmose"),
-        details: groupDetails,
-      })
+      if (!group.isSkyr) {
+        if (timeOsmosisFree > 0 && Math.max(transferEnd, timeOsmosisFree) - timeOsmosisFree >= 60) {
+          const washStart = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+          ganttTasks.push({
+            key: `osm-wash-${group.key}-court-${Math.random()}`,
+            label: `Lavage Osmoseur (COURT)`,
+            startMinute: washStart,
+            durationMinutes: 90,
+            color: "#cbd5e1",
+          })
+          timeOsmoseWashFree = washStart + 90
+          timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+          osmoseWashInserted = true
+        } else if (osmosisCount >= 3) {
+          const washStart = Math.max(transferEnd, timeOsmosisFree, timeOsmoseWashFree)
+          ganttTasks.push({
+            key: `osm-wash-${group.key}-long-${Math.random()}`,
+            label: `Lavage Osmoseur (LONG)`,
+            startMinute: washStart,
+            durationMinutes: 150,
+            color: "#cbd5e1",
+          })
+          timeOsmoseWashFree = washStart + 150
+          timeOsmosisFree = Math.max(timeOsmosisFree, timeOsmoseWashFree)
+          osmoseWashInserted = true
+        }
+        if (osmoseWashInserted) osmosisCount = 0
 
-      const powderDuration = computePowderTime(chunkMass)
+        const osmoseStart = Math.max(transferEnd, timeOsmosisFree)
+        const osmoseDuration = computeOsmoseTime(reqRaw, ci, targetVal)
+        osmoseEnd = osmoseStart + osmoseDuration
+        timeOsmosisFree = osmoseEnd
+        osmosisCount++
+
+        uniqueCmdIds.forEach(cmdId => {
+          const res = commandsResults[cmdId]
+          if (res.osmoseStart === 0 || osmoseStart < res.osmoseStart) res.osmoseStart = osmoseStart
+          res.osmoseEnd = Math.max(res.osmoseEnd, osmoseEnd)
+        })
+
+        ganttTasks.push({
+          key: `osmose-${group.key}-${Date.now()}-${Math.random()}`,
+          label: `${group.name} : Osmose ${availableTLS}`,
+          startMinute: osmoseStart,
+          durationMinutes: osmoseDuration,
+          color: getNextColor("osmose"),
+          details: groupDetails,
+        })
+      }
+
+      const powderDuration = group.isSkyr ? 0 : computePowderTime(chunkMass)
       const pastoDuration = computePastoTime(chunkMass)
 
       // Pasto Wash Check
@@ -1134,15 +1208,20 @@ export const runMultiCommandSimulation = (
       timePowderFree = pastoStart - powderDuration
       pastoCount++
 
-      if (res.powderStart === 0 || timePowderFree < res.powderStart) res.powderStart = timePowderFree
-      res.powderEnd = Math.max(res.powderEnd, timePowderFree + powderDuration)
-      if (res.pastoStart === 0 || pastoStart < res.pastoStart) res.pastoStart = pastoStart
-      res.pastoEnd = Math.max(res.pastoEnd, pastoEnd)
+      uniqueCmdIds.forEach(cmdId => {
+        const res = commandsResults[cmdId]
+        if (!group.isSkyr) {
+          if (res.powderStart === 0 || timePowderFree < res.powderStart) res.powderStart = timePowderFree
+          res.powderEnd = Math.max(res.powderEnd, timePowderFree + powderDuration)
+        }
+        if (res.pastoStart === 0 || pastoStart < res.pastoStart) res.pastoStart = pastoStart
+        res.pastoEnd = Math.max(res.pastoEnd, pastoEnd)
+      })
 
       ganttTasks.push({
         key: `pasto-${group.key}-${Date.now()}-${Math.random()}`,
-        label: `${group.name} : Poudrage + Pasto`,
-        startMinute: timePowderFree,
+        label: group.isSkyr ? `${group.name} : Pasto` : `${group.name} : Poudrage + Pasto`,
+        startMinute: group.isSkyr ? pastoStart : timePowderFree,
         durationMinutes: powderDuration + pastoDuration,
         color: getNextColor("pasto"),
         details: groupDetails,
@@ -1194,12 +1273,15 @@ export const runMultiCommandSimulation = (
         if (!readyTanks[group.key]) readyTanks[group.key] = []
         readyTanks[group.key].push({ cfName: cfTank.name, readyTime: maturationEnd, volume: fillAmount })
         
-        if (res.maturationStart === 0 || maturationStart < res.maturationStart) {
-          res.maturationStart = maturationStart
-          res.firstTankName = cfTank.name
-        }
-        res.maturationEnd = Math.max(res.maturationEnd, maturationEnd)
-        res.firstTankMaturationEnd = res.maturationEnd
+        uniqueCmdIds.forEach(cmdId => {
+          const res = commandsResults[cmdId]
+          if (res.maturationStart === 0 || maturationStart < res.maturationStart) {
+            res.maturationStart = maturationStart
+            res.firstTankName = cfTank.name
+          }
+          res.maturationEnd = Math.max(res.maturationEnd, maturationEnd)
+          res.firstTankMaturationEnd = res.maturationEnd
+        })
       }
     }
 
@@ -1335,13 +1417,24 @@ export const runMultiCommandSimulation = (
           timeAtia = endAtia
           timeGrunwald = endGrun
 
-          ganttTasks.push({
-            key: `pkg-both-${cmd.id}-${ref.id}-${Math.random()}`,
-            label: `Cond. ${ref.name} (ATIA+GRUN)`,
-            startMinute: chunkStart,
-            durationMinutes: chunkEnd - chunkStart,
-            color: "hsl(200, 90%, 55%)",
-          })
+          if (takePotsAtia > 0) {
+            ganttTasks.push({
+              key: `pkg-atia-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Cond. ${ref.name} (ATIA)`,
+              startMinute: startAtia,
+              durationMinutes: atiaDuration,
+              color: "hsl(220, 90%, 65%)",
+            })
+          }
+          if (takePotsGrun > 0) {
+            ganttTasks.push({
+              key: `pkg-grun-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Cond. ${ref.name} (GRUN)`,
+              startMinute: startGrun,
+              durationMinutes: grunDuration,
+              color: "hsl(200, 90%, 55%)",
+            })
+          }
         }
 
         ganttTasks.push({
@@ -1562,8 +1655,9 @@ const orderSlice = createSlice({
           let milkType: MilkType = "montagne"
           const n = r.refName.toLowerCase()
           if (n.includes("skyr")) milkType = "fcv3"
-          else if (n.includes("nature") || n.includes("bio")) milkType = "bio"
           else if (n.includes("val de praz") || n.includes("vdp")) milkType = "savoie"
+          else if (n.includes("baiko") || n.includes("mdd") || n.includes("nature")) milkType = "montagne"
+          else if (n.includes("bio")) milkType = "bio"
           return {
             id: `ref-${Date.now()}-${i}`,
             name: r.refName,
@@ -1599,8 +1693,9 @@ const orderSlice = createSlice({
             let milkType: MilkType = "montagne"
             const n = r.refName.toLowerCase()
             if (n.includes("skyr")) milkType = "fcv3"
-            else if (n.includes("nature") || n.includes("bio")) milkType = "bio"
             else if (n.includes("val de praz") || n.includes("vdp")) milkType = "savoie"
+            else if (n.includes("baiko") || n.includes("mdd") || n.includes("nature")) milkType = "montagne"
+            else if (n.includes("bio")) milkType = "bio"
             return {
               id: `ref-${Date.now()}-${i}`,
               name: r.refName,
@@ -1641,14 +1736,113 @@ const orderSlice = createSlice({
         state.commands.splice(cmdIndex, 1)
 
         if (state.commands.length > 0) {
-          if (state.activeCommandId === toCompleteId) {
-            state.activeCommandId = state.commands[0].id
-          }
+          state.activeCommandId = state.commands[0].id
         } else {
           state.activeCommandId = ""
         }
         syncActiveCommandToRoot(state)
         state.simulationDone = false
+      }
+    },
+    // TLS Execution Reducers
+    initTlsTransfer(state, action: PayloadAction<{ tlsName: string, commandId: string }>) {
+      const { tlsName, commandId } = action.payload
+      state.tlsExecution[tlsName] = { ...state.tlsExecution[tlsName], status: "transfert_en_cours", commandId, times: {} }
+    },
+    validateTlsTransferEnd(state, action: PayloadAction<{ tlsName: string, volume: number, tlcDeductions: { tlcKey: string, volume: number }[] }>) {
+      const { tlsName, volume, tlcDeductions } = action.payload
+      const exec = state.tlsExecution[tlsName]
+      if (exec) {
+        exec.status = "attente_osmose"
+        exec.currentVolume = volume
+        exec.times.transferEnd = new Date().toISOString()
+      }
+      
+      // Deduct from TLCs
+      tlcDeductions.forEach(deduction => {
+        const batches = state.tlcBatches[deduction.tlcKey as keyof typeof state.tlcBatches]
+        if (batches) {
+          let remainingToDeduct = deduction.volume
+          // Deduct from oldest batches first
+          batches.sort((a, b) => a.deliveryDate - b.deliveryDate)
+          for (const batch of batches) {
+            if (remainingToDeduct <= 0) break
+            const take = Math.min(batch.volume, remainingToDeduct)
+            batch.volume -= take
+            remainingToDeduct -= take
+          }
+        }
+      })
+    },
+    validateTlsOsmoseStart(state, action: PayloadAction<{ tlsName: string }>) {
+      const exec = state.tlsExecution[action.payload.tlsName]
+      if (exec) {
+        exec.status = "osmose_en_cours"
+        exec.times.osmoseStart = new Date().toISOString()
+      }
+    },
+    validateTlsOsmoseEnd(state, action: PayloadAction<{ tlsName: string, permeatVol: number, fcvApplied: number }>) {
+      const { tlsName, permeatVol, fcvApplied } = action.payload
+      const exec = state.tlsExecution[tlsName]
+      if (exec) {
+        exec.status = "attente_pasto"
+        exec.permeatVolume = permeatVol
+        exec.fcvApplied = fcvApplied
+        exec.currentVolume = Math.max(0, exec.currentVolume - permeatVol)
+        exec.times.osmoseEnd = new Date().toISOString()
+      }
+    },
+    validateTlsPastoStart(state, action: PayloadAction<{ tlsName: string }>) {
+      const exec = state.tlsExecution[action.payload.tlsName]
+      if (exec) {
+        exec.status = "pasto_en_cours"
+        exec.times.pastoStart = new Date().toISOString()
+      }
+    },
+    validateTlsPastoEnd(state, action: PayloadAction<{ tlsName: string }>) {
+      const exec = state.tlsExecution[action.payload.tlsName]
+      if (exec) {
+        exec.status = "vide"
+        exec.times.pastoEnd = new Date().toISOString()
+        exec.commandId = undefined
+        exec.currentVolume = 0
+      }
+    },
+    // CF Execution Reducers
+    initCfRemplissage(state, action: PayloadAction<{ cfName: string, commandId: string }>) {
+      const { cfName, commandId } = action.payload
+      state.cfExecution[cfName] = { ...state.cfExecution[cfName], status: "remplissage", commandId, currentVolume: 0, times: { remplissageStart: new Date().toISOString() } }
+    },
+    validateCfMaturationStart(state, action: PayloadAction<{ cfName: string, volume: number }>) {
+      const { cfName, volume } = action.payload
+      const exec = state.cfExecution[cfName]
+      if (exec) {
+        exec.status = "maturation_en_cours"
+        exec.currentVolume = volume
+        exec.times.maturationStart = new Date().toISOString()
+      }
+    },
+    validateCfMaturationEnd(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "attente_soutirage"
+        exec.times.maturationEnd = new Date().toISOString()
+      }
+    },
+    validateCfSoutirageStart(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "soutirage_en_cours"
+        exec.times.soutirageStart = new Date().toISOString()
+      }
+    },
+    validateCfVide(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "vide"
+        exec.commandId = undefined
+        exec.currentVolume = 0
+        exec.times = {}
       }
     },
     setActiveCommand(state, action: PayloadAction<string>) {
@@ -2223,6 +2417,17 @@ export const {
   resetOrder,
   toggleNeeds48hWash,
   toggleNeedsC3Wash,
+  initTlsTransfer,
+  validateTlsTransferEnd,
+  validateTlsOsmoseStart,
+  validateTlsOsmoseEnd,
+  validateTlsPastoStart,
+  validateTlsPastoEnd,
+  initCfRemplissage,
+  validateCfMaturationStart,
+  validateCfMaturationEnd,
+  validateCfSoutirageStart,
+  validateCfVide,
 } = orderSlice.actions
 
 export { CF_TANKS, TLS_TANKS }

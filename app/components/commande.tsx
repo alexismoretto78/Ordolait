@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand } from "../lib/orderSlice"
+import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand, setRefDestination, launchRefToMachine } from "../lib/orderSlice"
 
 const ALL_PRESETS = [
   { name: "BAIKO", grams: 105 },
@@ -297,11 +297,44 @@ export default function Commande() {
                               <strong>Fin calculée :</strong> {cmd.calculatedEndDate ? new Date(cmd.calculatedEndDate).toLocaleString() : "En attente"}
                             </span>
                           </div>
-                          <div style={{ marginTop: "8px", fontSize: "0.85rem" }}>
+                          <div style={{ marginTop: "8px", fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "8px" }}>
                             {cmd.references.map(r => (
-                              <span key={r.id} style={{ display: "inline-block", marginRight: "12px", background: "#e2e8f0", padding: "2px 8px", borderRadius: "12px" }}>
-                                {r.name} - {r.potsQty} pots ({r.gramPerPot}g)
-                              </span>
+                              <div key={r.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
+                                <span><strong>{r.name}</strong> - {r.potsQty} pots ({r.gramPerPot}g)</span>
+                                
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginRight: "4px" }}>Machine :</span>
+                                  {(["atia", "grunwald", "both"] as const).map((d) => {
+                                    const isSelected = cmd.refDestinations?.[r.id] === d
+                                    const label = d === "atia" ? "ATIA" : d === "grunwald" ? "GRUNWALD" : "Les deux"
+                                    return (
+                                      <button
+                                        key={d}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          dispatch(setRefDestination({ cmdId: cmd.id, refId: r.id, destination: d }))
+                                          if (d === "atia" || d === "both") dispatch(launchRefToMachine({ cmdId: cmd.id, refId: r.id, machine: "atia" }))
+                                          if (d === "grunwald" || d === "both") dispatch(launchRefToMachine({ cmdId: cmd.id, refId: r.id, machine: "grunwald" }))
+                                        }}
+                                        style={{
+                                          padding: "4px 8px",
+                                          borderRadius: "4px",
+                                          fontSize: "0.75rem",
+                                          fontWeight: isSelected ? "bold" : "normal",
+                                          border: `1px solid ${isSelected ? "var(--primary)" : "var(--border-color)"}`,
+                                          background: isSelected ? "var(--primary-light)" : "white",
+                                          color: isSelected ? "var(--primary)" : "var(--text-muted)",
+                                          cursor: "pointer",
+                                          transition: "var(--transition)"
+                                        }}
+                                      >
+                                        {label}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
                             ))}
                           </div>
                           

@@ -61,16 +61,42 @@ export default function Lancement() {
   }
 
   // Calculate allocated volumes of CF tanks for this active command
-  const allocatedVolumes: { [key: string]: number } = {}
-  let remainingVolumeToDistribute = activeCommand.whiteMassKg
+  let skyrMass = 0
+  activeCommand.references.forEach(r => {
+    if (r.name.toLowerCase().includes("skyr")) {
+      skyrMass += (r.potsQty * r.gramPerPot) / 1000
+    }
+  })
+  
+  let remainingSkyr = skyrMass
+  let remainingClassic = activeCommand.whiteMassKg - skyrMass
 
-  CF_TANKS.forEach((tank) => {
-    if (activeCommand.selectedCFs.includes(tank.name)) {
-      const allocated = Math.min(remainingVolumeToDistribute, tank.capacity)
-      allocatedVolumes[tank.name] = allocated
-      remainingVolumeToDistribute = Math.max(0, remainingVolumeToDistribute - allocated)
+  const allocatedVolumes: { [key: string]: number } = {}
+  activeCommand.selectedCFs.forEach(c => allocatedVolumes[c] = 0)
+  
+  if (remainingSkyr > 0 && activeCommand.selectedCFs.includes("CF20")) {
+    const take = Math.min(remainingSkyr, 12000)
+    allocatedVolumes["CF20"] += take
+    remainingSkyr -= take
+  }
+
+  const sortedSelectedCFs = [...activeCommand.selectedCFs].filter(t => t !== "CF20").sort((a, b) => {
+    return CF_TANKS.findIndex(t => t.name === a) - CF_TANKS.findIndex(t => t.name === b)
+  })
+
+  sortedSelectedCFs.forEach((tankName, index) => {
+    const tank = CF_TANKS.find(t => t.name === tankName)
+    const capacity = tank?.capacity || 2200
+    
+    if (index === sortedSelectedCFs.length - 1) {
+      // Put all remaining volume in the last tank to show overflow if any
+      allocatedVolumes[tankName] += remainingClassic
+      remainingClassic = 0
     } else {
-      allocatedVolumes[tank.name] = 0
+      const available = capacity - allocatedVolumes[tankName]
+      const allocated = Math.min(remainingClassic, available)
+      allocatedVolumes[tankName] += allocated
+      remainingClassic = Math.max(0, remainingClassic - allocated)
     }
   })
 
@@ -381,6 +407,28 @@ export default function Lancement() {
             </div>
             
             <div className="info-section" style={{ marginTop: 16 }}>
+              <div className="info-item" style={{ alignItems: "flex-start" }}>
+                <span className="info-label">Type(s) de masse blanche</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", textAlign: "right" }}>
+                  {activeCommand.isSkyr && (
+                    <span className="info-value" style={{ fontWeight: 800, color: "var(--primary)" }}>
+                      Skyr ({activeCommand.skyrMilkType === 'fcv3' ? 'FCV3' : activeCommand.skyrMilkType === 'ecreme_savoie' ? 'Écrémé Savoie' : activeCommand.skyrMilkType === 'ecreme_montagne' ? 'Écrémé Montagne' : activeCommand.skyrMilkType})
+                    </span>
+                  )}
+                  {activeCommand.whiteMassKg - skyrMass > 0 && (
+                    <span className="info-value" style={{ fontWeight: 800, color: "var(--text-main)" }}>
+                      {activeCommand.milkType === 'bio' ? 'Bio' : 
+                       activeCommand.milkType === 'fcv3' ? 'FCV3' : 
+                       activeCommand.milkType === 'savoie' ? 'Savoie' : 
+                       activeCommand.milkType === 'montagne' ? 'Montagne' : 
+                       activeCommand.milkType === 'creme' ? 'Crème' : 
+                       activeCommand.milkType === 'ecreme_savoie' ? 'Écrémé Savoie' : 
+                       activeCommand.milkType === 'ecreme_montagne' ? 'Écrémé Montagne' : 
+                       activeCommand.milkType}
+                    </span>
+                  )}
+                </div>
+              </div>
               <div className="info-item">
                 <span className="info-label">Masse blanche totale</span>
                 <span className="info-value">{activeCommand.whiteMassKg.toFixed(0)} kg</span>
