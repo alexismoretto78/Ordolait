@@ -67,13 +67,13 @@ export default function Lancement() {
       skyrMass += (r.potsQty * r.gramPerPot) / 1000
     }
   })
-  
+
   let remainingSkyr = skyrMass
   let remainingClassic = activeCommand.whiteMassKg - skyrMass
 
   const allocatedVolumes: { [key: string]: number } = {}
   activeCommand.selectedCFs.forEach(c => allocatedVolumes[c] = 0)
-  
+
   if (remainingSkyr > 0 && activeCommand.selectedCFs.includes("CF20")) {
     const take = Math.min(remainingSkyr, 12000)
     allocatedVolumes["CF20"] += take
@@ -87,7 +87,7 @@ export default function Lancement() {
   sortedSelectedCFs.forEach((tankName, index) => {
     const tank = CF_TANKS.find(t => t.name === tankName)
     const capacity = tank?.capacity || 2200
-    
+
     if (index === sortedSelectedCFs.length - 1) {
       // Put all remaining volume in the last tank to show overflow if any
       allocatedVolumes[tankName] += remainingClassic
@@ -103,7 +103,7 @@ export default function Lancement() {
   const handlePotsChange = (refId: string, machine: "atia" | "grunwald", valueStr: string) => {
     // Only allow numbers
     const cleanStr = valueStr.replace(/[^0-9]/g, "")
-    
+
     setLocalPots(prev => ({
       ...prev,
       [refId]: {
@@ -122,7 +122,7 @@ export default function Lancement() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      
+
       {/* active command header */}
       <div className="card" style={{ borderLeft: "4px solid var(--primary)" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -132,7 +132,7 @@ export default function Lancement() {
               🚀 Lancement sur Machines
             </h2>
           </div>
-          
+
           <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: "8px" }}>
             {commands.map((cmd) => {
               const isActive = cmd.id === activeCommandId
@@ -164,10 +164,10 @@ export default function Lancement() {
                       </span>
                     )}
                   </div>
-                  
+
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, marginTop: 4 }}>
                     <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <span>🥛</span> {cmd.whiteMassKg.toFixed(0)} kg (Maturation)
+                      <span>🥛</span> {cmd.whiteMassKg.toFixed(0)} L (Maturation)
                     </span>
                     <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
                       <span>🏭</span> CF: {cmd.selectedCFs.length > 0 ? cmd.selectedCFs.join(", ") : "Aucune"}
@@ -181,13 +181,13 @@ export default function Lancement() {
       </div>
 
       <div className="dashboard-grid">
-        
+
         {/* Left Side: references list to launch */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {activeCommand.references.map((ref) => {
             const dest = activeCommand.refDestinations?.[ref.id] || "both"
             const sent = activeCommand.refSentStatus?.[ref.id] || { atia: false, grunwald: false }
-            
+
             const needsAtia = dest === "atia" || dest === "both"
             const needsGrunwald = dest === "grunwald" || dest === "both"
 
@@ -198,8 +198,8 @@ export default function Lancement() {
             const currentLocal = localPots[ref.id] || { atia: "0", grunwald: "0" }
 
             return (
-              <div 
-                key={ref.id} 
+              <div
+                key={ref.id}
                 className={`launch-card ${isCompleted ? "completed" : ""}`}
                 style={{
                   border: "1px solid var(--border-color)",
@@ -211,7 +211,7 @@ export default function Lancement() {
                   borderLeft: isCompleted ? "4px solid var(--success)" : "4px solid var(--warning)"
                 }}
               >
-                
+
                 {/* Reference Header */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                   <div>
@@ -230,7 +230,7 @@ export default function Lancement() {
                   <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>
                     1. Sélectionner les lignes de conditionnement
                   </span>
-                  
+
                   <div className="ref-dest-group" style={{ display: "flex", gap: 8 }}>
                     {(["atia", "grunwald", "both"] as const).map((d) => {
                       const isSelected = dest === d
@@ -357,7 +357,7 @@ export default function Lancement() {
 
         {/* Right Side: CF tanks storage monitoring for the active command */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          
+
           <div className="card">
             <h2>🥛 État de la Masse Blanche (Maturation CF)</h2>
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 16 }}>
@@ -372,7 +372,7 @@ export default function Lancement() {
                 const pct = (vol / capacity) * 100
 
                 return (
-                  <div 
+                  <div
                     key={name}
                     style={{
                       border: "1px solid var(--border-color)",
@@ -393,19 +393,19 @@ export default function Lancement() {
 
                     {/* progress bar */}
                     <div style={{ background: "#e2e8f0", height: "8px", borderRadius: "4px", overflow: "hidden" }}>
-                      <div 
-                        style={{ 
-                          background: "linear-gradient(90deg, var(--primary) 0%, var(--success) 100%)", 
-                          height: "100%", 
-                          width: `${pct}%` 
-                        }} 
+                      <div
+                        style={{
+                          background: "linear-gradient(90deg, var(--primary) 0%, var(--success) 100%)",
+                          height: "100%",
+                          width: `${pct}%`
+                        }}
                       />
                     </div>
                   </div>
                 )
               })}
             </div>
-            
+
             <div className="info-section" style={{ marginTop: 16 }}>
               <div className="info-item" style={{ alignItems: "flex-start" }}>
                 <span className="info-label">Type(s) de masse blanche</span>
@@ -417,21 +417,21 @@ export default function Lancement() {
                   )}
                   {activeCommand.whiteMassKg - skyrMass > 0 && (
                     <span className="info-value" style={{ fontWeight: 800, color: "var(--text-main)" }}>
-                      {activeCommand.milkType === 'bio' ? 'Bio' : 
-                       activeCommand.milkType === 'fcv3' ? 'FCV3' : 
-                       activeCommand.milkType === 'savoie' ? 'Savoie' : 
-                       activeCommand.milkType === 'montagne' ? 'Montagne' : 
-                       activeCommand.milkType === 'creme' ? 'Crème' : 
-                       activeCommand.milkType === 'ecreme_savoie' ? 'Écrémé Savoie' : 
-                       activeCommand.milkType === 'ecreme_montagne' ? 'Écrémé Montagne' : 
-                       activeCommand.milkType}
+                      {activeCommand.milkType === 'bio' ? 'Bio' :
+                        activeCommand.milkType === 'fcv3' ? 'FCV3' :
+                          activeCommand.milkType === 'savoie' ? 'Savoie' :
+                            activeCommand.milkType === 'montagne' ? 'Montagne' :
+                              activeCommand.milkType === 'creme' ? 'Crème' :
+                                activeCommand.milkType === 'ecreme_savoie' ? 'Écrémé Savoie' :
+                                  activeCommand.milkType === 'ecreme_montagne' ? 'Écrémé Montagne' :
+                                    activeCommand.milkType}
                     </span>
                   )}
                 </div>
               </div>
               <div className="info-item">
                 <span className="info-label">Masse blanche totale</span>
-                <span className="info-value">{activeCommand.whiteMassKg.toFixed(0)} kg</span>
+                <span className="info-value">{activeCommand.whiteMassKg.toFixed(0)} L</span>
               </div>
               <div className="info-item">
                 <span className="info-label">Volume concentré CF</span>

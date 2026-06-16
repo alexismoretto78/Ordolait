@@ -73,6 +73,46 @@ export default function Commande() {
 
   const nowMs = Date.now()
 
+  // Calculate total white mass and breakdown (subtracting already produced mass)
+  const totalWhiteMass = commands.reduce((acc, cmd) => acc + Math.max(0, (cmd.whiteMassKg || 0) - (cmd.producedWhiteMass || 0)), 0)
+  
+  const whiteMassBreakdown: Record<string, number> = {}
+  commands.forEach(cmd => {
+    const remainingForCmd = Math.max(0, (cmd.whiteMassKg || 0) - (cmd.producedWhiteMass || 0))
+    if (remainingForCmd <= 0) return
+    
+    let skyrMass = 0
+    cmd.references.forEach(r => {
+      if (r.name.toLowerCase().includes("skyr")) {
+        skyrMass += (r.potsQty * (r.gramPerPot || 125)) / 1000
+      }
+    })
+    
+    // Scale proportionally if partially produced
+    const ratio = remainingForCmd / (cmd.whiteMassKg || 1)
+    skyrMass = skyrMass * ratio
+    
+    const classicMass = remainingForCmd - skyrMass
+    
+    if (skyrMass > 0) {
+      const skyrType = cmd.skyrMilkType || 'fcv3'
+      const key = `Skyr (${skyrType === 'fcv3' ? 'FCV3' : skyrType === 'ecreme_savoie' ? 'Écrémé Savoie' : skyrType === 'ecreme_montagne' ? 'Écrémé Montagne' : skyrType})`
+      whiteMassBreakdown[key] = (whiteMassBreakdown[key] || 0) + skyrMass
+    }
+    
+    if (classicMass > 0) {
+      const typeStr = cmd.milkType === 'bio' ? 'Bio' : 
+           cmd.milkType === 'fcv3' ? 'FCV3' : 
+           cmd.milkType === 'savoie' ? 'Savoie' : 
+           cmd.milkType === 'montagne' ? 'Montagne' : 
+           cmd.milkType === 'creme' ? 'Crème' : 
+           cmd.milkType === 'ecreme_savoie' ? 'Écrémé Savoie' : 
+           cmd.milkType === 'ecreme_montagne' ? 'Écrémé Montagne' : 
+           cmd.milkType
+      whiteMassBreakdown[typeStr] = (whiteMassBreakdown[typeStr] || 0) + classicMass
+    }
+  })
+
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 12, marginBottom: 16 }}>
@@ -105,6 +145,31 @@ export default function Commande() {
           </button>
         </div>
       </div>
+
+      {commands.length > 0 && (
+        <div style={{ background: "var(--primary-light)", padding: "16px", borderRadius: "var(--radius-md)", border: "1px solid var(--primary-border)", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <h3 style={{ margin: 0, color: "var(--primary)", fontSize: "1.1rem" }}>Quantité de masse blanche requise</h3>
+              <p style={{ margin: "4px 0 0 0", color: "var(--text-muted)", fontSize: "0.85rem" }}>Total RESTANT à produire (déduit des pasteurisations)</p>
+            </div>
+            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--primary-dark)" }}>
+              {totalWhiteMass.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
+            </div>
+          </div>
+          
+          {Object.keys(whiteMassBreakdown).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", borderTop: "1px solid rgba(59, 130, 246, 0.2)", paddingTop: "12px" }}>
+              {Object.entries(whiteMassBreakdown).map(([type, mass]) => (
+                <div key={type} style={{ background: "#fff", padding: "6px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--primary-border)", display: "flex", alignItems: "center", gap: "8px", boxShadow: "var(--shadow-sm)" }}>
+                  <span style={{ fontWeight: 600, color: "var(--text-main)", fontSize: "0.85rem" }}>{type}</span>
+                  <span style={{ fontWeight: 800, color: "var(--primary)", fontSize: "0.95rem" }}>{mass.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeSubTab === "encours" && (
         <div>

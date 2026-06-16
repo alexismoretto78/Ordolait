@@ -364,7 +364,7 @@ export default function TLC() {
                 
                 <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "20px", backgroundColor: "#f8fafc", padding: "12px", borderRadius: "var(--radius-md)" }}>
                   <div style={{ position: "relative", width: "70px", height: "90px", borderRadius: "14px 14px 18px 18px", border: "2px solid #cbd5e1", overflow: "hidden", display: "flex", alignItems: "flex-end", backgroundColor: "#ffffff" }}>
-                    <div style={{ width: "100%", height: `${pct}%`, background: config.gradient, transition: "height 0.4s ease-out", borderRadius: "0 0 6px 6px" }} />
+                    <div style={{ width: "100%", height: `${Math.min(pct, 100)}%`, background: stats.volume > tank.capacity ? "linear-gradient(180deg, #fca5a5 0%, #ef4444 100%)" : config.gradient, transition: "height 0.4s ease-out", borderRadius: "0 0 6px 6px" }} />
                     <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: "0.75rem", fontWeight: 800, color: pct > 45 ? "#fff" : "var(--text-muted)", textShadow: pct > 45 ? "0 1px 2px rgba(0,0,0,0.3)" : "none" }}>
                       {pct.toFixed(0)}%
                     </div>

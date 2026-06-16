@@ -8,17 +8,18 @@ import TLC from "./components/tlc"
 import Commande from "./components/commande"
 import Journee from "./components/journee"
 import Gantt from "./components/gantt"
+import Ordo from "./components/ordo"
 
 export default function Home() {
   const dispatch = useDispatch()
   const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning">("tableau_de_bord")
+  const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo">("tableau_de_bord")
 
   useEffect(() => {
     dispatch(completeSimulation())
   }, [commands, tlcBatches, needs48hWash, needsC3Wash, dispatch])
 
-  const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning") => {
+  const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo") => {
     setActiveTab(tab)
   }
 
@@ -176,6 +177,30 @@ export default function Home() {
         >
           <span>🥛</span> Réception
         </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("ordo")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "ordo" ? "700" : "500",
+            backgroundColor: activeTab === "ordo" ? "var(--primary)" : "transparent",
+            color: activeTab === "ordo" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "ordo" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>⏱️</span> Ordo
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -207,6 +232,14 @@ export default function Home() {
         <div className="dashboard-grid">
           <section className="full-width-section">
             <TLC />
+          </section>
+        </div>
+      )}
+
+      {activeTab === "ordo" && (
+        <div className="dashboard-grid">
+          <section className="full-width-section">
+            <Ordo />
           </section>
         </div>
       )}

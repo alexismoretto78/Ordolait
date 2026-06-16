@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux"
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
-import { toggleNeeds48hWash, toggleNeedsC3Wash } from "../lib/orderSlice"
+import { toggleNeeds48hWash, toggleNeedsC3Wash, setProductionStartTime } from "../lib/orderSlice"
 import TLC from "./tlc"
 
 export default function Gantt() {
@@ -21,7 +21,8 @@ export default function Gantt() {
     simulationResults,
     needs48hWash,
     needsC3Wash,
-    tlcBatches
+    tlcBatches,
+    productionStartTime
   } = useSelector((state: RootState) => state.order)
 
   const totalReceivedVolume = commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
@@ -41,6 +42,18 @@ export default function Gantt() {
     const hours = Math.floor(minutes / 60)
     const mins = Math.floor(minutes % 60)
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
+  }
+
+  const getAbsoluteTime = (minutes: number, showDate: boolean = false) => {
+    let baseTime = productionStartTime ? new Date(productionStartTime) : new Date();
+    
+    const d = new Date(baseTime);
+    d.setMinutes(d.getMinutes() + minutes);
+    
+    if (showDate) {
+      return d.toLocaleString("fr-FR", { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' });
   }
 
   return (
@@ -95,6 +108,16 @@ export default function Gantt() {
             />
             🌙 Simuler lavage de nuit 24h (C3 - Poudrage/Pasto)
           </label>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 600, borderLeft: "1px solid var(--border-color)", paddingLeft: 16 }}>
+            <span>🕒 Début prod. :</span>
+            <input 
+              type="datetime-local" 
+              value={productionStartTime || ""} 
+              onChange={(e) => dispatch(setProductionStartTime(e.target.value))} 
+              style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid var(--border-color)", fontSize: "0.85rem" }}
+            />
+          </div>
         </div>
 
         {totalReceivedVolume <= 0 && (
@@ -115,13 +138,14 @@ export default function Gantt() {
 
                 {/* Timeline Axis (Y-axis) */}
                 <div style={{ position: "sticky", left: 0, zIndex: 10, backgroundColor: "#f8fafc", width: 80, flexShrink: 0, borderRight: "2px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
-                  <div style={{ height: 60, borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, backgroundColor: "#f8fafc", zIndex: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: "bold", color: "var(--text-muted)" }}>
-                    Heures
+                  <div style={{ height: 60, borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, backgroundColor: "#f8fafc", zIndex: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: "bold", color: "var(--text-muted)", textAlign: "center" }}>
+                    Date & Heure
                   </div>
                   <div style={{ position: "relative", height: `${Math.max(totalDuration * 2, 600)}px` }}>
                     {Array.from({ length: Math.ceil(totalDuration / 60) + 1 }).map((_, i) => (
-                      <div key={i} style={{ position: "absolute", top: `${i * 60 * 2}px`, width: "100%", borderBottom: "1px solid rgba(0,0,0,0.1)", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 600, transform: "translateY(-50%)" }}>
-                        {i}h
+                      <div key={i} style={{ position: "absolute", top: `${i * 60 * 2}px`, width: "100%", borderBottom: "1px solid rgba(0,0,0,0.1)", textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, transform: "translateY(-50%)", padding: "0 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>{getAbsoluteTime(i * 60, true).split(" ")[0]}</span>
+                        <span>{getAbsoluteTime(i * 60, false)}</span>
                       </div>
                     ))}
                   </div>
@@ -180,7 +204,7 @@ export default function Gantt() {
                                     fontWeight: 500,
                                     boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
                                   }}
-                                  title={`${seg.label || task.label}\nDébut: +${formatTime(seg.startMinute)}\nDurée: ${formatTime(seg.durationMinutes)}\n${seg.details || task.details || ""}`.trim()}
+                                  title={`${seg.label || task.label}\nDe ${getAbsoluteTime(seg.startMinute, true)} à ${getAbsoluteTime(seg.startMinute + seg.durationMinutes, true)}\nDurée: ${formatTime(seg.durationMinutes)}\n${seg.details || task.details || ""}`.trim()}
                                 >
                                   {displayText}
                                 </div>

@@ -137,12 +137,12 @@ describe('orderSlice pure functions', () => {
     expect(alloc.tls3).toBe(4300);
   });
 
-  it('should select Cuves For Volume', () => {
-    const resClassic = selectCuvesForVolume(1000, false);
+  it('selectCuvesForVolume should fallback when not enough available', () => {
+    const resClassic = selectCuvesForVolume(1000, "bio", false);
     expect(resClassic.length).toBeGreaterThan(0);
 
-    const resSkyr = selectCuvesForVolume(5000, true);
-    expect(resSkyr).toEqual(['CF20']);
+    const resSkyr = selectCuvesForVolume(5000, "fcv3", true);
+    expect(resSkyr).toEqual(["CF20"]);
   });
 });
 

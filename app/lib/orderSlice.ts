@@ -71,6 +71,11 @@ export type Command = {
   skyrMilkType?: "fcv3" | "ecreme_savoie" | "ecreme_montagne"
   skyrDirectPasto?: boolean
   isCFManual?: boolean
+  cfSequence?: string[]
+  cfVolumes?: { [cfName: string]: number }
+  lastPastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number }
+  executedRawMilk?: number // Tracks actual transferred raw milk for execution
+  producedWhiteMass?: number // Tracks actual white mass produced and put in CFs
 }
 
 export type CommandSimResult = {
@@ -142,8 +147,8 @@ export const milkTypeConfigs: Record<string, any> = {
   ecreme_montagne: { label: "Écrémé Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)", emoji: "💧" }
 }
 
-export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours"
-export type CfStatus = "vide" | "remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours"
+export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours" | "remplissage_en_cours"
+export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "a_laver" | "en_lavage"
 
 export type TlsExecution = {
   commandId?: string;
@@ -151,6 +156,8 @@ export type TlsExecution = {
   currentVolume: number;
   permeatVolume?: number;
   fcvApplied?: number;
+  tlcDeductions?: { tlcKey: string, volume: number }[];
+  pastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number };
   times: {
     transferEnd?: string;
     osmoseStart?: string;
@@ -164,11 +171,15 @@ export type CfExecution = {
   commandId?: string;
   status: CfStatus;
   currentVolume: number;
+  dornic?: string | number;
+  tempPasto?: string | number;
+  pression?: string | number;
   times: {
     remplissageStart?: string;
     maturationStart?: string;
     maturationEnd?: string;
     soutirageStart?: string;
+    soutirageEnd?: string;
   }
 }
 
@@ -360,15 +371,12 @@ const initialState: OrderState = {
   simulatedMilkReceivedVolume: 0,
   simulatedOsmosedVolume: 0,
 
-  // Start with one default command
-  commands: [initialCommand("cmd-1", "Commande 1")],
-  activeCommandId: "cmd-1",
+  // Start with empty arrays
+  commands: [],
+  activeCommandId: "",
   completedCommands: [],
 
-  milkOrders: [
-    { id: "mo-1", milkType: "bio", supplier: "Ferme Bio A", scheduledDate: new Date(Date.now() + 86400000).toISOString().slice(0, 16), quantity: 25000, status: "pending" },
-    { id: "mo-2", milkType: "savoie", supplier: "Coopérative Savoie", scheduledDate: new Date(Date.now() + 172800000).toISOString().slice(0, 16), quantity: 30000, status: "pending" },
-  ],
+  milkOrders: [],
 
   tlsExecution: {
     "TLS1": { status: "vide", currentVolume: 0, times: {} },
@@ -421,11 +429,8 @@ const CF_TANKS = [
   { name: "CF20", capacity: 12000 },
 ]
 
-export const selectCuvesForVolume = (volume: number, isSkyr: boolean = false) => {
+const findBestCombination = (volume: number, availableCFs: typeof CF_TANKS) => {
   if (volume <= 0) return []
-  if (isSkyr) return ["CF20"]
-
-  const availableCFs = CF_TANKS.filter(t => t.name !== "CF20")
   const n = availableCFs.length
   let bestCombination: typeof CF_TANKS = []
   let bestTotalCapacity = Infinity
@@ -460,9 +465,31 @@ export const selectCuvesForVolume = (volume: number, isSkyr: boolean = false) =>
   }
 
   if (bestCombination.length === 0) {
-    return availableCFs.map(t => t.name)
+    return availableCFs
   }
 
+  return bestCombination
+}
+
+export const selectCuvesForVolume = (volume: number, milkType: string, isSkyr: boolean = false, availableCFsParam?: typeof CF_TANKS) => {
+  if (volume <= 0) return []
+  if (isSkyr) return ["CF20"]
+
+  const allowedForCF20 = ["fcv3", "ecreme_savoie", "ecreme_montagne"].includes(milkType)
+  const baseTanks = availableCFsParam || CF_TANKS;
+  const availableCFs = allowedForCF20 ? baseTanks : baseTanks.filter(t => t.name !== "CF20")
+  
+  // Imposer une CF de 2200L à la fin si possible
+  const cfs2200 = availableCFs.filter(t => t.capacity === 2200)
+  if (cfs2200.length > 0) {
+    const chosen2200 = cfs2200[0]
+    const remainingVolume = volume - chosen2200.capacity
+    const otherCFs = availableCFs.filter(t => t.name !== chosen2200.name)
+    const bestOther = findBestCombination(remainingVolume, otherCFs)
+    return [...bestOther.map(t => t.name), chosen2200.name]
+  }
+
+  const bestCombination = findBestCombination(volume, availableCFs)
   return bestCombination.map(t => t.name)
 }
 
@@ -816,12 +843,12 @@ export const recalculateActiveCommandMetrics = (state: OrderState, active: Comma
       })
     } else {
       if (hasSkyr && hasClassic) {
-        const nonSkyrCFs = selectCuvesForVolume(active.whiteMassKg - skyrWhiteMass, false)
-        active.selectedCFs = Array.from(new Set(["CF20", ...nonSkyrCFs]))
+        const nonSkyrCFs = selectCuvesForVolume(active.whiteMassKg - skyrWhiteMass, active.milkType, false)
+        active.selectedCFs = ["CF20", ...nonSkyrCFs]
       } else if (hasSkyr) {
         active.selectedCFs = ["CF20"]
       } else {
-        active.selectedCFs = selectCuvesForVolume(active.whiteMassKg, false)
+        active.selectedCFs = selectCuvesForVolume(active.whiteMassKg, active.milkType, false)
       }
     }
 
@@ -1289,7 +1316,8 @@ export const runMultiCommandSimulation = (
     const tanks = readyTanks[group.key]?.sort((a: any, b: any) => a.readyTime - b.readyTime) || []
 
     group.refs.forEach(({ cmd, ref }: { cmd: Command, ref: ProductReference }) => {
-      let refVol = (ref.potsQty * ref.gramPerPot) / 1000
+      let gramPerPot = ref.gramPerPot || 125
+      let refVol = (ref.potsQty * gramPerPot) / 1000
       const dest = cmd.refDestinations?.[ref.id] || "both"
       const customPots = cmd.refPotsLaunched?.[ref.id]
       const potsDefault = ref.potsQty
@@ -1319,7 +1347,7 @@ export const runMultiCommandSimulation = (
         t.volume -= take
         refVol -= take
 
-        const takeRatio = (potsAtia + potsGrun) > 0 ? take / ((potsAtia + potsGrun) * ref.gramPerPot / 1000) : 0
+        const takeRatio = (potsAtia + potsGrun) > 0 ? take / ((potsAtia + potsGrun) * gramPerPot / 1000) : 0
         const takePotsAtia = potsAtia * takeRatio
         const takePotsGrun = potsGrun * takeRatio
 
@@ -1745,34 +1773,48 @@ const orderSlice = createSlice({
       }
     },
     // TLS Execution Reducers
-    initTlsTransfer(state, action: PayloadAction<{ tlsName: string, commandId: string }>) {
-      const { tlsName, commandId } = action.payload
-      state.tlsExecution[tlsName] = { ...state.tlsExecution[tlsName], status: "transfert_en_cours", commandId, times: {} }
+    initTlsTransfer(state, action: PayloadAction<{ tlsName: string, commandId: string, volume: number, tlcDeductions: { tlcKey: string, volume: number }[] }>) {
+      const { tlsName, commandId, volume, tlcDeductions } = action.payload
+      
+      const cmd = state.commands.find(c => c.id === commandId)
+      if (cmd) {
+        cmd.executedRawMilk = (cmd.executedRawMilk || 0) + volume
+      }
+
+      state.tlsExecution[tlsName] = { 
+        ...state.tlsExecution[tlsName], 
+        status: "transfert_en_cours", 
+        commandId, 
+        currentVolume: volume,
+        tlcDeductions,
+        times: { transferStart: new Date().toISOString() } as any 
+      }
     },
-    validateTlsTransferEnd(state, action: PayloadAction<{ tlsName: string, volume: number, tlcDeductions: { tlcKey: string, volume: number }[] }>) {
-      const { tlsName, volume, tlcDeductions } = action.payload
+    validateTlsTransferEnd(state, action: PayloadAction<{ tlsName: string }>) {
+      const { tlsName } = action.payload
       const exec = state.tlsExecution[tlsName]
       if (exec) {
         exec.status = "attente_osmose"
-        exec.currentVolume = volume
         exec.times.transferEnd = new Date().toISOString()
-      }
-      
-      // Deduct from TLCs
-      tlcDeductions.forEach(deduction => {
-        const batches = state.tlcBatches[deduction.tlcKey as keyof typeof state.tlcBatches]
-        if (batches) {
-          let remainingToDeduct = deduction.volume
-          // Deduct from oldest batches first
-          batches.sort((a, b) => a.deliveryDate - b.deliveryDate)
-          for (const batch of batches) {
-            if (remainingToDeduct <= 0) break
-            const take = Math.min(batch.volume, remainingToDeduct)
-            batch.volume -= take
-            remainingToDeduct -= take
-          }
+        
+        // Deduct from TLCs
+        if (exec.tlcDeductions) {
+          exec.tlcDeductions.forEach(deduction => {
+            const batches = state.tlcBatches[deduction.tlcKey as keyof typeof state.tlcBatches]
+            if (batches) {
+              let remainingToDeduct = deduction.volume
+              // Deduct from oldest batches first
+              batches.sort((a, b) => a.deliveryDate - b.deliveryDate)
+              for (const batch of batches) {
+                if (remainingToDeduct <= 0) break
+                const take = Math.min(batch.volume, remainingToDeduct)
+                batch.volume -= take
+                remainingToDeduct -= take
+              }
+            }
+          })
         }
-      })
+      }
     },
     validateTlsOsmoseStart(state, action: PayloadAction<{ tlsName: string }>) {
       const exec = state.tlsExecution[action.payload.tlsName]
@@ -1795,30 +1837,105 @@ const orderSlice = createSlice({
     validateTlsPastoStart(state, action: PayloadAction<{ tlsName: string }>) {
       const exec = state.tlsExecution[action.payload.tlsName]
       if (exec) {
-        exec.status = "pasto_en_cours"
-        exec.times.pastoStart = new Date().toISOString()
-      }
-    },
-    validateTlsPastoEnd(state, action: PayloadAction<{ tlsName: string }>) {
-      const exec = state.tlsExecution[action.payload.tlsName]
-      if (exec) {
+        const cmdId = exec.commandId
+        const cmd = state.commands.find(c => c.id === cmdId)
+        
+        // Find available CFs
+        const availableCFs = CF_TANKS.filter(t => state.cfExecution[t.name]?.status === "vide")
+        const sequence = selectCuvesForVolume(exec.currentVolume, cmd?.milkType || "", cmd?.isSkyr, availableCFs)
+        
+        // Allocate volumes
+        const cfVolumes: {[key: string]: number} = {}
+        let remaining = exec.currentVolume
+        for (const cfName of sequence) {
+          const cap = CF_TANKS.find(t => t.name === cfName)?.capacity || 0
+          const take = Math.min(remaining, cap)
+          cfVolumes[cfName] = take
+          remaining -= take
+          
+          if (state.cfExecution[cfName]) {
+            state.cfExecution[cfName] = {
+              ...state.cfExecution[cfName],
+              status: "attente_remplissage",
+              commandId: cmdId,
+              currentVolume: take
+            }
+          }
+        }
+        
+        if (cmd) {
+          cmd.cfSequence = sequence
+          cmd.cfVolumes = cfVolumes
+          cmd.producedWhiteMass = (cmd.producedWhiteMass || 0) + exec.currentVolume
+        }
+
         exec.status = "vide"
+        exec.currentVolume = 0
+        exec.times.pastoStart = new Date().toISOString()
         exec.times.pastoEnd = new Date().toISOString()
         exec.commandId = undefined
-        exec.currentVolume = 0
+      }
+    },
+    validateCfRemplissageStart(state, action: PayloadAction<{ cfName: string, pastoData: { dornic: number|string, tempPasto: number|string, pression: number|string } }>) {
+      const { cfName, pastoData } = action.payload
+      const exec = state.cfExecution[cfName]
+      if (exec) {
+        exec.status = "remplissage"
+        exec.dornic = pastoData.dornic
+        exec.tempPasto = pastoData.tempPasto
+        exec.pression = pastoData.pression
+        exec.times.remplissageStart = new Date().toISOString()
+        
+        const cmd = state.commands.find(c => c.id === exec.commandId)
+        if (cmd) {
+          cmd.lastPastoData = pastoData
+        }
+      }
+    },
+    validateCfRemplissageEnd(state, action: PayloadAction<{ cfName: string, volume?: number }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "attente_maturation"
+        if (action.payload.volume !== undefined) {
+          exec.currentVolume = action.payload.volume
+        }
+        
+        const cmd = state.commands.find(c => c.id === exec.commandId)
+        if (cmd && cmd.cfSequence && cmd.lastPastoData) {
+          const currentIndex = cmd.cfSequence.indexOf(action.payload.cfName)
+          if (currentIndex !== -1 && currentIndex + 1 < cmd.cfSequence.length) {
+            const nextCfName = cmd.cfSequence[currentIndex + 1]
+            const nextExec = state.cfExecution[nextCfName]
+            if (nextExec && nextExec.status === "attente_remplissage") {
+              nextExec.status = "remplissage"
+              nextExec.dornic = cmd.lastPastoData.dornic
+              nextExec.tempPasto = cmd.lastPastoData.tempPasto
+              nextExec.pression = cmd.lastPastoData.pression
+              nextExec.times.remplissageStart = new Date().toISOString()
+            }
+          }
+        }
       }
     },
     // CF Execution Reducers
-    initCfRemplissage(state, action: PayloadAction<{ cfName: string, commandId: string }>) {
-      const { cfName, commandId } = action.payload
-      state.cfExecution[cfName] = { ...state.cfExecution[cfName], status: "remplissage", commandId, currentVolume: 0, times: { remplissageStart: new Date().toISOString() } }
+    initCfRemplissage(state, action: PayloadAction<{ cfName: string, commandId: string, dornic?: string | number, pression?: string | number, tempPasto?: string | number }>) {
+      const { cfName, commandId, dornic, pression, tempPasto } = action.payload
+      state.cfExecution[cfName] = { 
+        ...state.cfExecution[cfName], 
+        status: "remplissage", 
+        commandId, 
+        currentVolume: 0, 
+        dornic,
+        pression,
+        tempPasto,
+        times: { remplissageStart: new Date().toISOString() } 
+      }
     },
-    validateCfMaturationStart(state, action: PayloadAction<{ cfName: string, volume: number }>) {
-      const { cfName, volume } = action.payload
+    validateCfMaturationStart(state, action: PayloadAction<{ cfName: string }>) {
+      const { cfName } = action.payload
       const exec = state.cfExecution[cfName]
       if (exec) {
         exec.status = "maturation_en_cours"
-        exec.currentVolume = volume
         exec.times.maturationStart = new Date().toISOString()
       }
     },
@@ -1836,13 +1953,29 @@ const orderSlice = createSlice({
         exec.times.soutirageStart = new Date().toISOString()
       }
     },
-    validateCfVide(state, action: PayloadAction<{ cfName: string }>) {
+    validateCfSoutirageEnd(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "a_laver"
+        exec.times.soutirageEnd = new Date().toISOString()
+      }
+    },
+    validateCfLavageStart(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "en_lavage"
+      }
+    },
+    validateCfLavageEnd(state, action: PayloadAction<{ cfName: string }>) {
       const exec = state.cfExecution[action.payload.cfName]
       if (exec) {
         exec.status = "vide"
         exec.commandId = undefined
         exec.currentVolume = 0
         exec.times = {}
+        exec.dornic = undefined
+        exec.pression = undefined
+        exec.tempPasto = undefined
       }
     },
     setActiveCommand(state, action: PayloadAction<string>) {
@@ -2300,7 +2433,7 @@ const orderSlice = createSlice({
             { id: "ref-2", name: "Skyr Fraise 120g", potsQty: 40000, gramPerPot: 120 },
           ]
         } else {
-          cmd.selectedCFs = selectCuvesForVolume(cmd.osmosedVolume, false)
+          cmd.selectedCFs = selectCuvesForVolume(cmd.osmosedVolume, cmd.milkType, false)
           cmd.references = [
             { id: "ref-1", name: "Nature 125g", potsQty: 80000, gramPerPot: 125 },
             { id: "ref-2", name: "Fraise 120g", potsQty: 40000, gramPerPot: 120 },
@@ -2422,12 +2555,15 @@ export const {
   validateTlsOsmoseStart,
   validateTlsOsmoseEnd,
   validateTlsPastoStart,
-  validateTlsPastoEnd,
+  validateCfRemplissageStart,
+  validateCfRemplissageEnd,
   initCfRemplissage,
   validateCfMaturationStart,
   validateCfMaturationEnd,
   validateCfSoutirageStart,
-  validateCfVide,
+  validateCfSoutirageEnd,
+  validateCfLavageStart,
+  validateCfLavageEnd,
 } = orderSlice.actions
 
 export { CF_TANKS, TLS_TANKS }
