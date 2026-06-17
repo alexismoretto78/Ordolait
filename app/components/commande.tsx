@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
-import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand, setRefDestination, launchRefToMachine } from "../lib/orderSlice"
+import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand, setRefDestination, launchRefToMachine, reorderCommands } from "../lib/orderSlice"
 
 const ALL_PRESETS = [
   { name: "BAIKO", grams: 105 },
@@ -70,6 +70,26 @@ export default function Commande() {
     setNewCmdName("Nouvelle Commande")
     setNewCmdRefs([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])
   }
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData("text/plain", index.toString());
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    const startIndexStr = e.dataTransfer.getData("text/plain");
+    if (!startIndexStr) return;
+    const startIndex = parseInt(startIndexStr, 10);
+    if (startIndex !== index && !isNaN(startIndex)) {
+      dispatch(reorderCommands({ startIndex, endIndex: index }));
+    }
+  };
 
   const nowMs = Date.now()
 
@@ -179,7 +199,7 @@ export default function Commande() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {commands.map(cmd => {
+              {commands.map((cmd, index) => {
                 const isActive = cmd.id === activeCommandId
                 const startMs = new Date(cmd.startDate || 0).getTime()
                 const isUpcoming = startMs > nowMs
@@ -187,6 +207,10 @@ export default function Commande() {
                 return (
                   <div 
                     key={cmd.id}
+                    draggable={editingCmdId !== cmd.id}
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, index)}
                     onClick={() => {
                       if (editingCmdId !== cmd.id) dispatch(setActiveCommand(cmd.id))
                     }}
@@ -329,6 +353,7 @@ export default function Commande() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                         <div>
                           <h4 style={{ margin: "0 0 4px 0", color: isActive ? "var(--primary)" : "var(--text-main)", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ cursor: "grab", opacity: 0.5, fontSize: "1.2rem", marginRight: "4px" }} title="Glisser-déposer pour réordonner">☰</span>
                             <input
                               type="text"
                               value={cmd.name}

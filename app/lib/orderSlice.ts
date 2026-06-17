@@ -903,6 +903,8 @@ export const runMultiCommandSimulation = (
   let timePastoFree = 0
   let timeGrunwald = 0
   let timeAtia = 0
+  let lastRefAtia = ""
+  let lastRefGrun = ""
   let timeWashLine1Free = 0
   let timeWashLine2Free = 0
   let timeSoutirageWashFree = 0
@@ -1406,6 +1408,19 @@ export const runMultiCommandSimulation = (
         }
 
         if (dest === "grunwald") {
+          if (lastRefGrun && lastRefGrun !== ref.id) {
+            const changeStart = Math.max(t.readyTime, timeGrunwald)
+            ganttTasks.push({
+              key: `change-grun-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Changement format GRUN`,
+              startMinute: changeStart,
+              durationMinutes: 30,
+              color: "#64748b",
+            })
+            timeGrunwald = changeStart + 30
+          }
+          lastRefGrun = ref.id
+
           chunkStart = Math.max(t.readyTime, timeGrunwald)
           const duration = (takePotsGrun / 10000) * 60
           chunkEnd = chunkStart + duration
@@ -1413,12 +1428,25 @@ export const runMultiCommandSimulation = (
 
           ganttTasks.push({
             key: `pkg-grun-${cmd.id}-${ref.id}-${Math.random()}`,
-            label: `Cond. ${ref.name} (GRUN)`,
+            label: `Cond. ${ref.name} (${Math.round(takePotsGrun)} pots) (GRUN)`,
             startMinute: chunkStart,
             durationMinutes: duration,
             color: "hsl(200, 90%, 55%)",
           })
         } else if (dest === "atia") {
+          if (lastRefAtia && lastRefAtia !== ref.id) {
+            const changeStart = Math.max(t.readyTime, timeAtia)
+            ganttTasks.push({
+              key: `change-atia-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Changement format ATIA`,
+              startMinute: changeStart,
+              durationMinutes: 30,
+              color: "#64748b",
+            })
+            timeAtia = changeStart + 30
+          }
+          lastRefAtia = ref.id
+
           chunkStart = Math.max(t.readyTime, timeAtia)
           const duration = (takePotsAtia / 3500) * 60
           chunkEnd = chunkStart + duration
@@ -1426,12 +1454,38 @@ export const runMultiCommandSimulation = (
 
           ganttTasks.push({
             key: `pkg-atia-${cmd.id}-${ref.id}-${Math.random()}`,
-            label: `Cond. ${ref.name} (ATIA)`,
+            label: `Cond. ${ref.name} (${Math.round(takePotsAtia)} pots) (ATIA)`,
             startMinute: chunkStart,
             durationMinutes: duration,
             color: "hsl(220, 90%, 65%)",
           })
         } else {
+          if (takePotsAtia > 0 && lastRefAtia && lastRefAtia !== ref.id) {
+            const changeStart = Math.max(t.readyTime, timeAtia)
+            ganttTasks.push({
+              key: `change-atia-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Changement format ATIA`,
+              startMinute: changeStart,
+              durationMinutes: 30,
+              color: "#64748b",
+            })
+            timeAtia = changeStart + 30
+          }
+          if (takePotsAtia > 0) lastRefAtia = ref.id
+
+          if (takePotsGrun > 0 && lastRefGrun && lastRefGrun !== ref.id) {
+            const changeStart = Math.max(t.readyTime, timeGrunwald)
+            ganttTasks.push({
+              key: `change-grun-${cmd.id}-${ref.id}-${Math.random()}`,
+              label: `Changement format GRUN`,
+              startMinute: changeStart,
+              durationMinutes: 30,
+              color: "#64748b",
+            })
+            timeGrunwald = changeStart + 30
+          }
+          if (takePotsGrun > 0) lastRefGrun = ref.id
+
           const startAtia = Math.max(t.readyTime, timeAtia)
           const startGrun = Math.max(t.readyTime, timeGrunwald)
           const atiaDuration = (takePotsAtia / 3500) * 60
@@ -1448,7 +1502,7 @@ export const runMultiCommandSimulation = (
           if (takePotsAtia > 0) {
             ganttTasks.push({
               key: `pkg-atia-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Cond. ${ref.name} (ATIA)`,
+              label: `Cond. ${ref.name} (${Math.round(takePotsAtia)} pots) (ATIA)`,
               startMinute: startAtia,
               durationMinutes: atiaDuration,
               color: "hsl(220, 90%, 65%)",
@@ -1457,7 +1511,7 @@ export const runMultiCommandSimulation = (
           if (takePotsGrun > 0) {
             ganttTasks.push({
               key: `pkg-grun-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Cond. ${ref.name} (GRUN)`,
+              label: `Cond. ${ref.name} (${Math.round(takePotsGrun)} pots) (GRUN)`,
               startMinute: startGrun,
               durationMinutes: grunDuration,
               color: "hsl(200, 90%, 55%)",
@@ -1562,27 +1616,27 @@ export const runMultiCommandSimulation = (
     const c5End = c5Start + 90
     timeSoutirageWashFree = c5End
     endWashTimeLine2 = c5End
-
-    const atiaStart = endWashTimeLine1
-    ganttTasks.push({
-      key: `wash-atia`,
-      label: `Lavage ATIA`,
-      startMinute: atiaStart,
-      durationMinutes: 50,
-      color: "#94a3b8",
-    })
-    endWashTimeLine1 += 50
-
-    const grunStart = endWashTimeLine2
-    ganttTasks.push({
-      key: `wash-grun`,
-      label: `Lavage Grunwald`,
-      startMinute: grunStart,
-      durationMinutes: 110,
-      color: "#94a3b8",
-    })
-    endWashTimeLine2 += 110
   }
+
+  const atiaStart = endWashTimeLine1
+  ganttTasks.push({
+    key: `wash-atia`,
+    label: `Lavage ATIA`,
+    startMinute: atiaStart,
+    durationMinutes: 50,
+    color: "#94a3b8",
+  })
+  endWashTimeLine1 += 50
+
+  const grunStart = endWashTimeLine2
+  ganttTasks.push({
+    key: `wash-grun`,
+    label: `Lavage Grunwald`,
+    startMinute: grunStart,
+    durationMinutes: 110,
+    color: "#94a3b8",
+  })
+  endWashTimeLine2 += 110
 
   if (config?.needsC3Wash) {
     let c3WashStart = Math.max(1320, endWashTimeLine1)
@@ -1651,9 +1705,9 @@ export const runMultiCommandSimulation = (
   createGroupedRow("grouped-cf-wash", "6. Lavage Cuves CF", t => t.label.includes("Lavage") && !!t.label.match(/CF\d+/), t => {
     const match = t.label.match(/CF\d+/); return match ? match[0] : "Lavage";
   }, "#cbd5e1")
-  createGroupedRow("grouped-packaging-atia", "7. Conditionnement (Ligne ATIA)", t => t.label.includes("(ATIA)") || t.label.includes("ATIA+GRUN"), t => "ATIA", "hsl(220, 90%, 65%)")
-  createGroupedRow("grouped-packaging-grun", "8. Conditionnement (Ligne GRUNWALD)", t => t.label.includes("(GRUN)") || t.label.includes("ATIA+GRUN"), t => "GRUN", "hsl(200, 90%, 55%)")
-  createGroupedRow("grouped-wash", "9. Lavages (C5, ATIA, C3, C2, Osm)", t => t.label.includes("Lavage") && !t.label.match(/CF\d+/) && !t.label.match(/TLS\d+/) && !t.label.includes("Lavage C4"), t => {
+  createGroupedRow("grouped-packaging-atia", "7. Conditionnement (Ligne ATIA)", t => t.label.includes("(ATIA)") || t.label.includes("Changement format ATIA") || t.label.includes("ATIA+GRUN") || t.label === "Lavage ATIA", t => t.label.includes("Changement") ? "Changement" : (t.label.includes("Lavage") ? "Lavage" : "ATIA"), "hsl(220, 90%, 65%)")
+  createGroupedRow("grouped-packaging-grun", "8. Conditionnement (Ligne GRUNWALD)", t => t.label.includes("(GRUN)") || t.label.includes("Changement format GRUN") || t.label.includes("ATIA+GRUN") || t.label === "Lavage Grunwald", t => t.label.includes("Changement") ? "Changement" : (t.label.includes("Lavage") ? "Lavage" : "GRUN"), "hsl(200, 90%, 55%)")
+  createGroupedRow("grouped-wash", "9. Lavages (C5, C3, C2, Osm)", t => t.label.includes("Lavage") && !t.label.match(/CF\d+/) && !t.label.match(/TLS\d+/) && !t.label.includes("Lavage C4") && t.label !== "Lavage ATIA" && t.label !== "Lavage Grunwald", t => {
     return t.label.replace("Lavage ", "")
   }, "#94a3b8")
 
@@ -2467,6 +2521,34 @@ const orderSlice = createSlice({
     },
 
     // Simulation controls
+    reorderCommands(state, action: PayloadAction<{ startIndex: number; endIndex: number }>) {
+      const { startIndex, endIndex } = action.payload
+      const [removed] = state.commands.splice(startIndex, 1)
+      state.commands.splice(endIndex, 0, removed)
+      
+      const results = runMultiCommandSimulation(state.commands, state.tlcBatches, {
+        needs48hWash: state.needs48hWash,
+        needsC3Wash: state.needsC3Wash,
+        productionStartTime: state.productionStartTime
+      })
+      state.simulationResults = results
+
+      const active = state.commands.find(c => c.id === state.activeCommandId)
+      if (active && results.commandsResults[active.id]) {
+        const ar = results.commandsResults[active.id]
+        state.simulatedTiming = {
+          transferTime: ar.transferEnd - ar.transferStart,
+          osmoseTime: ar.osmoseEnd - ar.osmoseStart,
+          powderTime: ar.powderEnd - ar.powderStart,
+          pastoTime: ar.pastoEnd - ar.pastoStart,
+          startTime: ar.transferStart,
+          maturationTime: ar.maturationEnd - ar.maturationStart,
+        }
+      }
+      state.simulatedMilkReceivedVolume = state.commands.reduce((t, c) => t + c.milkReceivedVolume, 0)
+      state.simulatedOsmosedVolume = state.commands.reduce((t, c) => t + c.osmosedVolume, 0)
+      state.simulationDone = true
+    },
     startSimulation(state) {
       state.isSimulating = true
       state.simulationDone = false
@@ -2545,6 +2627,7 @@ export const {
   setSkyrMilkType,
   setSkyrDirectPasto,
   startSimulation,
+  reorderCommands,
   updateSimulationProgress,
   completeSimulation,
   resetOrder,

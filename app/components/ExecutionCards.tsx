@@ -99,25 +99,58 @@ export function ExecutionCards() {
 
   const handleInitTls = (tlsName: string) => {
     setTlsActiveTank(tlsName);
-    const initialCmdId = commands.length > 0 ? commands[0].id : "";
+    
+    // Sort commands to find priority (first by expectedEndDate, then startDate)
+    const sortedCommands = [...commands].sort((a, b) => {
+      const aEnd = a.expectedEndDate ? new Date(a.expectedEndDate).getTime() : Infinity;
+      const bEnd = b.expectedEndDate ? new Date(b.expectedEndDate).getTime() : Infinity;
+      if (aEnd !== bEnd) return aEnd - bEnd;
+      const aStart = a.startDate ? new Date(a.startDate).getTime() : Infinity;
+      const bStart = b.startDate ? new Date(b.startDate).getTime() : Infinity;
+      return aStart - bStart;
+    });
+
+    const priorityCmd = sortedCommands.find(cmd => {
+      const targetV = cmd.targetValue || 41;
+      const recV = cmd.milkReceptionValue || 33;
+      const totalRawNeeded = (cmd.whiteMassKg * targetV) / recV;
+      const alreadyTransferred = cmd.executedRawMilk || 0;
+      return (totalRawNeeded - alreadyTransferred) > 0;
+    }) || sortedCommands[0];
+
+    const initialCmdId = priorityCmd ? priorityCmd.id : "";
     setSelectedCmdId(initialCmdId);
     
     const maxVol = tlsName === "TLS1" ? 11900 : 5200;
     let suggestedVol = maxVol;
     
     let suggestedTlcKey = "tlc1";
-    const cmd = commands.find(c => c.id === initialCmdId);
-    if (cmd) {
-      const targetV = cmd.targetValue || 41;
-      const recV = cmd.milkReceptionValue || 33;
-      const totalRawNeeded = (cmd.whiteMassKg * targetV) / recV;
-      const alreadyTransferred = cmd.executedRawMilk || 0;
+    if (priorityCmd) {
+      const targetV = priorityCmd.targetValue || 41;
+      const recV = priorityCmd.milkReceptionValue || 33;
+      const totalRawNeeded = (priorityCmd.whiteMassKg * targetV) / recV;
+      const alreadyTransferred = priorityCmd.executedRawMilk || 0;
       const remainingNeeded = Math.max(0, totalRawNeeded - alreadyTransferred);
       
       suggestedVol = Math.round(Math.min(maxVol, remainingNeeded));
 
-      const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === cmd.milkType);
-      if (tlc) suggestedTlcKey = tlc.key;
+      const milkType = priorityCmd.milkType;
+      let oldestDate = Infinity;
+      
+      Object.entries(tlcBatches).forEach(([key, batches]) => {
+        if (key === "tankPermeat") return;
+        batches.forEach(b => {
+          if (b.milkType === milkType && b.volume > 0 && b.deliveryDate < oldestDate) {
+            oldestDate = b.deliveryDate;
+            suggestedTlcKey = key;
+          }
+        });
+      });
+      
+      if (oldestDate === Infinity) {
+        const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === milkType);
+        if (tlc) suggestedTlcKey = tlc.key;
+      }
     }
     
     setTransferVol(suggestedVol);
@@ -140,8 +173,24 @@ export function ExecutionCards() {
       setTransferVol(suggestedVol);
 
       let suggestedTlcKey = "tlc1";
-      const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === cmd.milkType);
-      if (tlc) suggestedTlcKey = tlc.key;
+      const milkType = cmd.milkType;
+      let oldestDate = Infinity;
+      
+      Object.entries(tlcBatches).forEach(([key, batches]) => {
+        if (key === "tankPermeat") return;
+        batches.forEach(b => {
+          if (b.milkType === milkType && b.volume > 0 && b.deliveryDate < oldestDate) {
+            oldestDate = b.deliveryDate;
+            suggestedTlcKey = key;
+          }
+        });
+      });
+      
+      if (oldestDate === Infinity) {
+        const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === milkType);
+        if (tlc) suggestedTlcKey = tlc.key;
+      }
+      
       setTlcDeductions([{ tlcKey: suggestedTlcKey, volume: suggestedVol }]);
     }
   }

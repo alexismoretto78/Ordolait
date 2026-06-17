@@ -144,7 +144,7 @@ export default function Gantt() {
                   <div style={{ position: "relative", height: `${Math.max(totalDuration * 2, 600)}px` }}>
                     {Array.from({ length: Math.ceil(totalDuration / 60) + 1 }).map((_, i) => (
                       <div key={i} style={{ position: "absolute", top: `${i * 60 * 2}px`, width: "100%", borderBottom: "1px solid rgba(0,0,0,0.1)", textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, transform: "translateY(-50%)", padding: "0 4px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>{getAbsoluteTime(i * 60, true).split(" ")[0]}</span>
+                        <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>{getAbsoluteTime(i * 60, true).split(" ").slice(0, 2).join(" ")}</span>
                         <span>{getAbsoluteTime(i * 60, false)}</span>
                       </div>
                     ))}
