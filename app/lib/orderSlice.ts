@@ -76,6 +76,8 @@ export type Command = {
   lastPastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number }
   executedRawMilk?: number // Tracks actual transferred raw milk for execution
   producedWhiteMass?: number // Tracks actual white mass produced and put in CFs
+  simResult?: CommandSimResult
+  baseTimeMs?: number
   tlsExecutionsHistory?: { tankName: string; exec: TlsExecution }[]
   cfExecutionsHistory?: { tankName: string; exec: CfExecution }[]
 }
@@ -159,7 +161,7 @@ export type TlsExecution = {
   permeatVolume?: number;
   fcvApplied?: number;
   tlcDeductions?: { tlcKey: string, volume: number }[];
-  consumedBatches?: { tlcKey: string, batchId: string, supplier: string, numLot: string, volume: number }[];
+  consumedBatches?: { tlcKey: string, batchId: string, lotNumber: string, volume: number }[];
   pastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number };
   times: {
     transferEnd?: string;
@@ -1945,8 +1947,7 @@ const orderSlice = createSlice({
                 exec.consumedBatches!.push({
                   tlcKey: deduction.tlcKey,
                   batchId: batch.id,
-                  supplier: batch.supplier,
-                  numLot: batch.numLot,
+                  lotNumber: batch.lotNumber,
                   volume: take
                 });
               }

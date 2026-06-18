@@ -639,7 +639,7 @@ export default function Commande() {
                                           {hist.exec.consumedBatches.map((b, bIdx) => (
                                             <li key={bIdx}>
                                               {b.volume.toFixed(0)} L depuis {b.tlcKey.toUpperCase()} 
-                                              (Lot: <strong>{b.numLot}</strong>, Fournisseur: {b.supplier})
+                                              (Lot: <strong>{b.lotNumber}</strong>)
                                             </li>
                                           ))}
                                         </ul>
