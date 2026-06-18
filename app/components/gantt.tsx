@@ -2,13 +2,10 @@
 
 import { useDispatch, useSelector } from "react-redux"
 import { useState, useEffect } from "react"
-import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
 import { toggleNeeds48hWash, toggleNeedsC3Wash, setProductionStartTime } from "../lib/orderSlice"
-import TLC from "./tlc"
 
 export default function Gantt() {
-  const [showTLCPopup, setShowTLCPopup] = useState(false)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -63,32 +60,7 @@ export default function Gantt() {
       {/* Control bar */}
       <div style={{ marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          {isMilkShortage && (
-            <div style={{ backgroundColor: "var(--danger)", color: "white", padding: "16px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxShadow: "var(--shadow-md)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                <span style={{ fontWeight: "bold", fontSize: "1.1rem" }}>⚠️ Quantité de lait insuffisante.</span>
-                <button
-                  type="button"
-                  onClick={() => setShowTLCPopup(true)}
-                  style={{ backgroundColor: "white", color: "var(--danger)", padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "0.95rem", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", transition: "transform 0.1s" }}
-                  onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
-                  onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
-                >
-                  Compléter le stock (TLC)
-                </button>
-              </div>
-              <div style={{ backgroundColor: "rgba(0, 0, 0, 0.15)", borderRadius: "8px", padding: "12px" }}>
-                <span style={{ display: "block", marginBottom: 8, fontWeight: 600, fontSize: "0.95rem" }}>Détail des manquants estimés pour la production :</span>
-                <ul style={{ margin: 0, paddingLeft: 20, fontSize: "0.95rem", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {Object.entries(milkShortages).map(([type, amount]) => (
-                    <li key={type}>
-                      <strong>Lait {formatMilkType(type)} : </strong> {Math.round(amount).toLocaleString("fr-FR")} Litres
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
+
         </div>
 
         <div style={{ display: "flex", gap: 20, alignItems: "center", marginTop: 8, padding: "12px", backgroundColor: "#f1f5f9", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
@@ -263,39 +235,6 @@ export default function Gantt() {
           </>
       )}
 
-          {showTLCPopup && mounted && createPortal(
-            <div style={{
-              position: "fixed",
-              top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: "#f8fafc",
-              zIndex: 999999,
-              overflowY: "auto",
-            }}>
-              <div style={{
-                width: "100%",
-                minHeight: "100vh",
-                padding: "24px 40px",
-                position: "relative"
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, borderBottom: "2px solid var(--border-color)", paddingBottom: 16 }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: "var(--danger)", fontSize: "1.8rem" }}>⚠️ Lait Insuffisant : Renseigner les futures livraisons</h2>
-                    <p style={{ margin: "4px 0 0 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                      Ajoutez vos livraisons futures dans les cuves pour combler le manque de lait. La simulation prendra en compte l&apos;heure d&apos;arrivée du camion pour la production.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowTLCPopup(false)}
-                    style={{ border: "none", background: "var(--danger)", color: "white", padding: "10px 24px", borderRadius: 8, fontSize: "1.1rem", cursor: "pointer", fontWeight: "bold", boxShadow: "var(--shadow-sm)" }}
-                  >
-                    ✕ Fermer et retourner au Gantt
-                  </button>
-                </div>
-                <TLC />
-              </div>
-            </div>,
-            document.body
-          )}
         </div>
       )
 }

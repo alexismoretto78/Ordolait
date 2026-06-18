@@ -19,6 +19,12 @@ export default function Home() {
     dispatch(completeSimulation())
   }, [commands, tlcBatches, needs48hWash, needsC3Wash, dispatch])
 
+  useEffect(() => {
+    if (commands.length === 0) {
+      setActiveTab("commandes")
+    }
+  }, [commands.length])
+
   const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo") => {
     setActiveTab(tab)
   }

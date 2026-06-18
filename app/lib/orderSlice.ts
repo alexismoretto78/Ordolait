@@ -76,6 +76,8 @@ export type Command = {
   lastPastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number }
   executedRawMilk?: number // Tracks actual transferred raw milk for execution
   producedWhiteMass?: number // Tracks actual white mass produced and put in CFs
+  tlsExecutionsHistory?: { tankName: string; exec: TlsExecution }[]
+  cfExecutionsHistory?: { tankName: string; exec: CfExecution }[]
 }
 
 export type CommandSimResult = {
@@ -157,6 +159,7 @@ export type TlsExecution = {
   permeatVolume?: number;
   fcvApplied?: number;
   tlcDeductions?: { tlcKey: string, volume: number }[];
+  consumedBatches?: { tlcKey: string, batchId: string, supplier: string, numLot: string, volume: number }[];
   pastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number };
   times: {
     transferEnd?: string;
@@ -935,45 +938,82 @@ export const runMultiCommandSimulation = (
   const typesToProduce: any[] = []
   const milkShortages: { [type: string]: number } = {}
 
-  const globalGroups = {
-    skyr: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    baiko_mdd: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    vdp: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    nature: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] },
-    autres: { whiteMassKg: 0, refs: [] as { cmd: Command, ref: ProductReference }[] }
-  }
+  const groupedByDayType: { [dateStr: string]: { [group: string]: { whiteMassKg: number, refs: { cmd: Command, ref: ProductReference }[], minEndTime: number } } } = {};
 
   commands.forEach(cmd => {
+    let endTime = Infinity;
+    if (cmd.expectedEndDate) {
+      endTime = new Date(cmd.expectedEndDate).getTime();
+    } else if (cmd.startDate) {
+      // Default fallback: startDate + 12h
+      endTime = new Date(cmd.startDate).getTime() + 12 * 3600 * 1000;
+    }
+    
+    const dateObj = new Date(cmd.startDate ? new Date(cmd.startDate).getTime() : simStartMs);
+    const dateStr = dateObj.toLocaleDateString("fr-FR", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+    if (!groupedByDayType[dateStr]) {
+      groupedByDayType[dateStr] = {
+        skyr: { whiteMassKg: 0, refs: [], minEndTime: Infinity },
+        baiko_mdd: { whiteMassKg: 0, refs: [], minEndTime: Infinity },
+        vdp: { whiteMassKg: 0, refs: [], minEndTime: Infinity },
+        nature: { whiteMassKg: 0, refs: [], minEndTime: Infinity },
+        autres: { whiteMassKg: 0, refs: [], minEndTime: Infinity }
+      };
+    }
+    
+    const dayGroups = groupedByDayType[dateStr];
+
     cmd.references.forEach(r => {
       const mass = (r.potsQty * r.gramPerPot) / 1000
       const name = r.name.toLowerCase()
+      
+      let gName = "autres";
       if (name.includes("skyr")) {
-        globalGroups.skyr.whiteMassKg += mass
-        globalGroups.skyr.refs.push({ cmd, ref: r })
+        gName = "skyr";
       } else if (name.includes("baiko") || name.includes("mdd") || name.includes("nature")) {
-        globalGroups.baiko_mdd.whiteMassKg += mass / 1.05
-        globalGroups.baiko_mdd.refs.push({ cmd, ref: r })
+        gName = "baiko_mdd";
       } else if (name.includes("val de praz") || name.includes("vdp")) {
-        globalGroups.vdp.whiteMassKg += mass / 1.05
-        globalGroups.vdp.refs.push({ cmd, ref: r })
+        gName = "vdp";
       } else if (name.includes("bio")) {
-        globalGroups.nature.whiteMassKg += mass
-        globalGroups.nature.refs.push({ cmd, ref: r })
+        gName = "nature";
+      }
+      
+      const g = dayGroups[gName as keyof typeof dayGroups];
+      if (gName === "baiko_mdd" || gName === "vdp") {
+        g.whiteMassKg += mass / 1.05;
       } else {
-        globalGroups.autres.whiteMassKg += mass
-        globalGroups.autres.refs.push({ cmd, ref: r })
+        g.whiteMassKg += mass;
+      }
+      g.refs.push({ cmd, ref: r });
+      g.minEndTime = Math.min(g.minEndTime, endTime);
+
+      if (gName === "autres") {
         if (!commandsResults[cmd.id]) {
-          commandsResults[cmd.id] = { id: cmd.id, name: cmd.name, transferStart: 0, transferEnd: 0, osmoseStart: 0, osmoseEnd: 0, powderStart: 0, powderEnd: 0, pastoStart: 0, pastoEnd: 0, maturationStart: 0, maturationEnd: 0, packagingStart: 999999, packagingEnd: 0, packagingAtiaDuration: 0, packagingGrunDuration: 0, totalDuration: 0 }
+          commandsResults[cmd.id] = { id: cmd.id, name: cmd.name, transferStart: 0, transferEnd: 0, osmoseStart: 0, osmoseEnd: 0, powderStart: 0, powderEnd: 0, pastoStart: 0, pastoEnd: 0, maturationStart: 0, maturationEnd: 0, packagingStart: 999999, packagingEnd: 0, packagingAtiaDuration: 0, packagingGrunDuration: 0, totalDuration: 0, referencesResults: [] }
         }
-        commandsResults[cmd.id].error = `Erreur : Recettes inconnues (${globalGroups.autres.refs.filter((x: any) => x.cmd.id === cmd.id).map((x: any) => x.ref.name).join(", ")}). Le lait n'a pas pu être sélectionné et ces produits ne seront pas planifiés.`
+        commandsResults[cmd.id].error = `Erreur : Recettes inconnues (${r.name}). Le lait n'a pas pu être sélectionné et ces produits ne seront pas planifiés.`
       }
     })
   })
 
-  if (globalGroups.skyr.whiteMassKg > 0) typesToProduce.push({ key: `skyr-global`, name: "MB Skyr", ...globalGroups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true })
-  if (globalGroups.baiko_mdd.whiteMassKg > 0) typesToProduce.push({ key: `baiko_mdd-global`, name: "MB Baiko/MDD", ...globalGroups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false })
-  if (globalGroups.vdp.whiteMassKg > 0) typesToProduce.push({ key: `vdp-global`, name: "MB VDP", ...globalGroups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false })
-  if (globalGroups.nature.whiteMassKg > 0) typesToProduce.push({ key: `nature-global`, name: "MB Nature", ...globalGroups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false })
+  const sortedDates = Object.keys(groupedByDayType).sort((a, b) => {
+    const [d1, m1, y1] = a.split("/");
+    const [d2, m2, y2] = b.split("/");
+    return new Date(`${y1}-${m1}-${d1}`).getTime() - new Date(`${y2}-${m2}-${d2}`).getTime();
+  });
+
+  sortedDates.forEach(dateStr => {
+    const dayGroups = groupedByDayType[dateStr];
+    const dayTypes: any[] = [];
+    if (dayGroups.skyr.whiteMassKg > 0) dayTypes.push({ key: `skyr-${dateStr}`, name: `MB Skyr (${dateStr})`, ...dayGroups.skyr, preferredTypes: ["fcv3", "ecreme_savoie", "ecreme_montagne", "creme"] as MilkType[], isSkyr: true });
+    if (dayGroups.baiko_mdd.whiteMassKg > 0) dayTypes.push({ key: `baiko_mdd-${dateStr}`, name: `MB Baiko/MDD (${dateStr})`, ...dayGroups.baiko_mdd, preferredTypes: ["montagne", "savoie"] as MilkType[], isSkyr: false });
+    if (dayGroups.vdp.whiteMassKg > 0) dayTypes.push({ key: `vdp-${dateStr}`, name: `MB VDP (${dateStr})`, ...dayGroups.vdp, preferredTypes: ["savoie"] as MilkType[], isSkyr: false });
+    if (dayGroups.nature.whiteMassKg > 0) dayTypes.push({ key: `nature-${dateStr}`, name: `MB Nature (${dateStr})`, ...dayGroups.nature, preferredTypes: ["bio"] as MilkType[], isSkyr: false });
+    
+    dayTypes.sort((a, b) => a.minEndTime - b.minEndTime);
+    typesToProduce.push(...dayTypes);
+  });
 
   const drawMilk = (reqVol: number, preferredTypes: MilkType[]) => {
     let remainingToDraw = reqVol
@@ -1081,15 +1121,46 @@ export const runMultiCommandSimulation = (
 
     let remWhiteMass = group.whiteMassKg
 
-    const CHUNK_SIZE = 5200
-
     let groupPackagingAvailableAt = 0
 
     while (remWhiteMass > 0) {
-      const chunkMass = Math.min(remWhiteMass, CHUNK_SIZE)
-      remWhiteMass -= chunkMass
-
       const targetVal = 41
+
+      let availableTanks = ["TLS1", "TLS2", "TLS3"].map(t => {
+        const capacity = t === "TLS1" ? 11000 : 5200;
+        // La capacité d'une TLS représente le volume de lait cru (reqRaw) qu'elle peut accueillir.
+        // On calcule donc la masse blanche max (chunkMass) que cette TLS peut produire :
+        const maxWhiteMass = capacity * (33.0 / targetVal);
+        return {
+          name: t,
+          availableAt: tlsAvailableAt[t as keyof typeof tlsAvailableAt],
+          capacity,
+          maxWhiteMass
+        }
+      });
+
+      // Choisir la meilleure cuve TLS :
+      // On privilégie la plus tôt disponible. Mais si remWhiteMass est grand et qu'une grande cuve
+      // permet de faire moins de lots et qu'elle est dispo pas trop tard, on la prend.
+      availableTanks.sort((a, b) => {
+        if (a.availableAt === b.availableAt) {
+          if (remWhiteMass > 4185) return b.capacity - a.capacity;
+          return a.capacity - b.capacity;
+        }
+        return a.availableAt - b.availableAt;
+      });
+
+      let selectedTank = availableTanks[0];
+      if (remWhiteMass > 4185 && selectedTank.capacity === 5200) {
+        const tls1 = availableTanks.find(t => t.name === "TLS1")!;
+        if (tls1.availableAt <= selectedTank.availableAt + 180) { 
+          selectedTank = tls1;
+        }
+      }
+
+      const chunkMass = Math.min(remWhiteMass, selectedTank.maxWhiteMass);
+      remWhiteMass -= chunkMass;
+
       const reqRaw = chunkMass * (targetVal / 33.0)
       const { actualDrawn, totalProtDrawn, lastTypeDrawn, milkAvailableAt, emptiedTLCs } = drawMilk(reqRaw, group.preferredTypes)
       
@@ -1102,7 +1173,7 @@ export const runMultiCommandSimulation = (
       const ci = actualDrawn > 0 ? totalProtDrawn / actualDrawn : 33.0
 
       const transferDuration = computeTransferTime(reqRaw)
-      const availableTLS = ["TLS1", "TLS2", "TLS3"].sort((a, b) => tlsAvailableAt[a as keyof typeof tlsAvailableAt] - tlsAvailableAt[b as keyof typeof tlsAvailableAt])[0] as keyof typeof tlsAvailableAt
+      const availableTLS = selectedTank.name as keyof typeof tlsAvailableAt
       
       let deliveryDelayMinutes = 0
       if (milkAvailableAt > simStartMs) {
@@ -1814,6 +1885,12 @@ const orderSlice = createSlice({
       if (cmdIndex !== -1) {
         const cmd = state.commands[cmdIndex]
         cmd.status = "dispatched"
+        
+        if (state.simulationResults && state.simulationResults.commandsResults[toCompleteId]) {
+          cmd.simResult = state.simulationResults.commandsResults[toCompleteId];
+          cmd.baseTimeMs = state.productionStartTime ? new Date(state.productionStartTime).getTime() : Date.now();
+        }
+
         state.completedCommands.push(cmd)
         state.commands.splice(cmdIndex, 1)
 
@@ -1853,6 +1930,7 @@ const orderSlice = createSlice({
         
         // Deduct from TLCs
         if (exec.tlcDeductions) {
+          if (!exec.consumedBatches) exec.consumedBatches = [];
           exec.tlcDeductions.forEach(deduction => {
             const batches = state.tlcBatches[deduction.tlcKey as keyof typeof state.tlcBatches]
             if (batches) {
@@ -1864,7 +1942,16 @@ const orderSlice = createSlice({
                 const take = Math.min(batch.volume, remainingToDeduct)
                 batch.volume -= take
                 remainingToDeduct -= take
+                exec.consumedBatches!.push({
+                  tlcKey: deduction.tlcKey,
+                  batchId: batch.id,
+                  supplier: batch.supplier,
+                  numLot: batch.numLot,
+                  volume: take
+                });
               }
+              // Cleanup empty batches
+              state.tlcBatches[deduction.tlcKey as keyof typeof state.tlcBatches] = batches.filter(b => b.volume > 0)
             }
           })
         }
@@ -1921,6 +2008,8 @@ const orderSlice = createSlice({
           cmd.cfSequence = sequence
           cmd.cfVolumes = cfVolumes
           cmd.producedWhiteMass = (cmd.producedWhiteMass || 0) + exec.currentVolume
+          if (!cmd.tlsExecutionsHistory) cmd.tlsExecutionsHistory = [];
+          cmd.tlsExecutionsHistory.push({ tankName: action.payload.tlsName, exec: JSON.parse(JSON.stringify(exec)) });
         }
 
         exec.status = "vide"
@@ -2012,6 +2101,16 @@ const orderSlice = createSlice({
       if (exec) {
         exec.status = "a_laver"
         exec.times.soutirageEnd = new Date().toISOString()
+        
+        const cmd = state.commands.find(c => c.id === exec.commandId)
+        if (cmd) {
+          if (!cmd.cfExecutionsHistory) cmd.cfExecutionsHistory = [];
+          // Avoid duplicate push if already exists
+          const exists = cmd.cfExecutionsHistory.find(h => h.tankName === action.payload.cfName && h.exec.times.remplissageStart === exec.times.remplissageStart);
+          if (!exists) {
+            cmd.cfExecutionsHistory.push({ tankName: action.payload.cfName, exec: JSON.parse(JSON.stringify(exec)) });
+          }
+        }
       }
     },
     validateCfLavageStart(state, action: PayloadAction<{ cfName: string }>) {

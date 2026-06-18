@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
+import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
 import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand, setRefDestination, launchRefToMachine, reorderCommands } from "../lib/orderSlice"
+import TLC from "./tlc"
 
 const ALL_PRESETS = [
   { name: "BAIKO", grams: 105 },
@@ -18,8 +20,11 @@ export default function Commande() {
   const { commands, completedCommands, activeCommandId, simulationResults } = useSelector((state: RootState) => state.order)
 
   const [activeSubTab, setActiveSubTab] = useState<"encours" | "ajouter" | "terminees">("encours")
+  const [showTLCPopup, setShowTLCPopup] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     if (commands.length === 0 && completedCommands.length === 0) {
       setActiveSubTab("ajouter")
     }
@@ -36,6 +41,8 @@ export default function Commande() {
   const [editCmdStartDate, setEditCmdStartDate] = useState("")
   const [editCmdEndDate, setEditCmdEndDate] = useState("")
   const [editCmdRefs, setEditCmdRefs] = useState<{ refName: string; potsQty: number; gramPerPot: number }[]>([])
+
+  const [expandedCompletedCmdId, setExpandedCompletedCmdId] = useState<string | null>(null);
 
   const handleEditCommand = (cmd: any) => {
     setEditingCmdId(cmd.id)
@@ -177,6 +184,37 @@ export default function Commande() {
               {totalWhiteMass.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
             </div>
           </div>
+          
+          {simulationResults?.milkShortages && Object.keys(simulationResults.milkShortages).length > 0 && (
+            <div style={{ backgroundColor: "var(--danger)", color: "white", padding: "16px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: 12, marginTop: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <span style={{ fontWeight: "bold", fontSize: "1.1rem" }}>⚠️ Quantité de lait TLC insuffisante.</span>
+                <button
+                  type="button"
+                  onClick={() => setShowTLCPopup(true)}
+                  style={{ backgroundColor: "white", color: "var(--danger)", padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: "bold", fontSize: "0.85rem" }}
+                >
+                  Compléter le stock (TLC)
+                </button>
+              </div>
+              <div style={{ backgroundColor: "rgba(0, 0, 0, 0.15)", borderRadius: "6px", padding: "8px" }}>
+                <span style={{ display: "block", marginBottom: 4, fontWeight: 600, fontSize: "0.85rem" }}>Détail des manquants estimés :</span>
+                <ul style={{ margin: 0, paddingLeft: 20, fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: 2 }}>
+                  {Object.entries(simulationResults.milkShortages).map(([type, amount]) => {
+                    const formatMilkType = (str: string) => {
+                      const map: Record<string, string> = { bio: "Bio", fcv3: "FCV3", savoie: "Savoie", montagne: "Montagne", creme: "Crème", ecreme_savoie: "Écrémé Savoie", ecreme_montagne: "Écrémé Montagne" }
+                      return str.split(" / ").map(s => map[s] || s).join(" ou ")
+                    }
+                    return (
+                      <li key={type}>
+                        <strong>Lait {formatMilkType(type)} : </strong> {Math.round(amount as number).toLocaleString("fr-FR")} Litres
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            </div>
+          )}
           
           {Object.keys(whiteMassBreakdown).length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", borderTop: "1px solid rgba(59, 130, 246, 0.2)", paddingTop: "12px" }}>
@@ -487,176 +525,336 @@ export default function Commande() {
       )}
 
       {activeSubTab === "terminees" && (
-        <div>
-          {completedCommands.length === 0 ? (
-            <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
-              Aucune commande terminée.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {completedCommands.map(cmd => (
-                <div 
-                  key={cmd.id}
-                  style={{
-                    border: "1px solid var(--border-color)",
-                    backgroundColor: "#f1f5f9",
-                    padding: "16px",
-                    borderRadius: "var(--radius-md)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                  }}
-                >
-                  <div>
-                    <h4 style={{ margin: "0 0 4px 0", color: "var(--text-muted)" }}>
-                      {cmd.name}
-                      <span style={{ marginLeft: "8px", fontSize: "0.8rem", backgroundColor: "var(--success)", color: "white", padding: "2px 6px", borderRadius: "4px" }}>Terminée</span>
-                    </h4>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
-                      <span><strong>Début :</strong> {cmd.startDate ? new Date(cmd.startDate).toLocaleString() : "Non défini"}</span>
-                    </div>
-                    <div style={{ marginTop: "8px", fontSize: "0.85rem", opacity: 0.8 }}>
-                      {cmd.references.map(r => (
-                        <span key={r.id} style={{ display: "inline-block", marginRight: "12px", background: "#e2e8f0", padding: "2px 8px", borderRadius: "12px" }}>
-                          {r.name} - {r.potsQty} pots ({r.gramPerPot}g)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+        (() => {
+          const formatTimeFromSim = (baseTimeMs: number | undefined, minutes: number | undefined) => {
+            if (baseTimeMs === undefined || minutes === undefined) return "--:--";
+            const d = new Date(baseTimeMs + minutes * 60000);
+            return d.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' });
+          };
+
+          return (
+            <div>
+              {completedCommands.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-muted)", fontStyle: "italic" }}>
+                  Aucune commande terminée.
                 </div>
-              ))}
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {completedCommands.map(cmd => (
+                    <div 
+                      key={cmd.id}
+                      style={{
+                        border: "1px solid var(--border-color)",
+                        backgroundColor: "#f1f5f9",
+                        borderRadius: "var(--radius-md)",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden"
+                      }}
+                    >
+                      {/* Ligne principale (résumé) */}
+                      <div 
+                        onClick={() => setExpandedCompletedCmdId(expandedCompletedCmdId === cmd.id ? null : cmd.id)}
+                        style={{
+                          padding: "16px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          cursor: "pointer",
+                          backgroundColor: expandedCompletedCmdId === cmd.id ? "#e2e8f0" : "transparent",
+                          transition: "background-color 0.2s"
+                        }}
+                      >
+                        <div>
+                          <h4 style={{ margin: "0 0 4px 0", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "10px" }}>
+                            {cmd.name}
+                            <span style={{ fontSize: "0.8rem", backgroundColor: "var(--success)", color: "white", padding: "2px 6px", borderRadius: "4px" }}>Terminée</span>
+                          </h4>
+                          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: "16px" }}>
+                            <span><strong>Début :</strong> {cmd.startDate ? new Date(cmd.startDate).toLocaleString() : "Non défini"}</span>
+                            <span><strong>Masse Blanche :</strong> {cmd.whiteMassKg.toFixed(0)} kg</span>
+                          </div>
+                          <div style={{ marginTop: "8px", fontSize: "0.85rem", opacity: 0.8 }}>
+                            {cmd.references.map(r => (
+                              <span key={r.id} style={{ display: "inline-block", marginRight: "12px", background: "#cbd5e1", padding: "2px 8px", borderRadius: "12px" }}>
+                                {r.name} - {r.potsQty} pots ({r.gramPerPot}g)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "1.5rem", color: "var(--text-muted)", padding: "0 10px" }}>
+                          {expandedCompletedCmdId === cmd.id ? "▲" : "▼"}
+                        </div>
+                      </div>
+
+                      {/* Sous-menu / Détails */}
+                      {expandedCompletedCmdId === cmd.id && (
+                        <div style={{ padding: "16px", borderTop: "1px solid var(--border-color)", backgroundColor: "#ffffff" }}>
+                          <h5 style={{ margin: "0 0 12px 0", color: "var(--primary)" }}>Détails du process (Masse Blanche)</h5>
+                          
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                            {/* Colonne Valeurs */}
+                            <div style={{ backgroundColor: "#f8fafc", padding: "12px", borderRadius: "8px" }}>
+                              <h6 style={{ margin: "0 0 8px 0", color: "var(--text-main)", fontSize: "0.9rem" }}>Valeurs paramétrées</h6>
+                              <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: "1.6" }}>
+                                <li><strong>Type de Lait :</strong> {cmd.milkType || "Non défini"}</li>
+                                <li><strong>Volume lait cru (Ci) :</strong> {cmd.milkReceivedVolume.toFixed(0)} L (Tx: {cmd.milkReceptionValue.toFixed(2)})</li>
+                                <li><strong>Cible Osmose (Cf) :</strong> {cmd.targetValue.toFixed(2)}</li>
+                                <li><strong>Cuves TLS :</strong> {cmd.selectedTLSs.length > 0 ? cmd.selectedTLSs.join(", ") : "Aucune"}</li>
+                                <li><strong>Cuves CF :</strong> {cmd.selectedCFs.length > 0 ? cmd.selectedCFs.join(", ") : "Aucune"}</li>
+                              </ul>
+                            </div>
+
+                            {/* Colonne Horaires */}
+                            <div style={{ backgroundColor: "#f8fafc", padding: "12px", borderRadius: "8px" }}>
+                              <h6 style={{ margin: "0 0 8px 0", color: "var(--text-main)", fontSize: "0.9rem" }}>Horaires calculés</h6>
+                              {cmd.simResult ? (
+                                <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: "1.6" }}>
+                                  <li><strong>Transfert TLC → TLS :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.transferStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.transferEnd)}</li>
+                                  <li><strong>Osmose :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.osmoseStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.osmoseEnd)}</li>
+                                  <li><strong>Poudrage :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.powderStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.powderEnd)}</li>
+                                  <li><strong>Pasteurisation :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.pastoStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.pastoEnd)}</li>
+                                  <li><strong>Maturation (CF) :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.maturationStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.maturationEnd)}</li>
+                                  <li><strong>Conditionnement :</strong> {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.packagingStart)} - {formatTimeFromSim(cmd.baseTimeMs, cmd.simResult.packagingEnd)}</li>
+                                </ul>
+                              ) : (
+                                <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Aucun historique de simulation sauvegardé pour cette commande.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Exécution Réelle & Contrôle Qualité */}
+                          {((cmd.tlsExecutionsHistory && cmd.tlsExecutionsHistory.length > 0) || (cmd.cfExecutionsHistory && cmd.cfExecutionsHistory.length > 0)) && (
+                            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px dashed var(--border-color)" }}>
+                              <h6 style={{ margin: "0 0 12px 0", color: "var(--text-main)" }}>Traçabilité & Contrôle Qualité (Exécution)</h6>
+                              
+                              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                                {cmd.tlsExecutionsHistory?.map((hist, idx) => (
+                                  <div key={`tls-${idx}`} style={{ fontSize: "0.85rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "10px", borderRadius: "6px" }}>
+                                    <strong style={{ color: "var(--primary)" }}>{hist.tankName}</strong>
+                                    {hist.exec.consumedBatches && hist.exec.consumedBatches.length > 0 && (
+                                      <div style={{ marginTop: "4px" }}>
+                                        <strong>Lait Cru utilisé :</strong>
+                                        <ul style={{ margin: "4px 0 0 20px", padding: 0 }}>
+                                          {hist.exec.consumedBatches.map((b, bIdx) => (
+                                            <li key={bIdx}>
+                                              {b.volume.toFixed(0)} L depuis {b.tlcKey.toUpperCase()} 
+                                              (Lot: <strong>{b.numLot}</strong>, Fournisseur: {b.supplier})
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+
+                                {cmd.cfExecutionsHistory?.map((hist, idx) => (
+                                  <div key={`cf-${idx}`} style={{ fontSize: "0.85rem", color: "var(--text-muted)", backgroundColor: "#f1f5f9", padding: "10px", borderRadius: "6px" }}>
+                                    <strong style={{ color: "var(--primary)" }}>{hist.tankName}</strong>
+                                    <div style={{ marginTop: "4px", display: "flex", gap: "16px" }}>
+                                      <span><strong>Dornic :</strong> {hist.exec.dornic || "--"}</span>
+                                      <span><strong>Température :</strong> {hist.exec.tempPasto ? `${hist.exec.tempPasto}°C` : "--"}</span>
+                                      <span><strong>Pression :</strong> {hist.exec.pression ? `${hist.exec.pression} bar` : "--"}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()
       )}
 
       {activeSubTab === "ajouter" && (
-        <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
-          <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande</h3>
-          <form onSubmit={handleAddCommand} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-              Nom de la commande
-              <input 
-                type="text" 
-                value={newCmdName} 
-                onChange={(e) => setNewCmdName(e.target.value)}
-                required
-                style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-              />
-            </label>
-
-            <div style={{ display: "flex", gap: "16px" }}>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                Date et heure de début
+        (() => {
+          const isInitialModal = commands.length === 0 && completedCommands.length === 0 && mounted;
+          const formContent = (
+            <form onSubmit={handleAddCommand} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                Nom de la commande
                 <input 
-                  type="datetime-local" 
-                  value={newCmdStartDate} 
-                  onChange={(e) => setNewCmdStartDate(e.target.value)}
+                  type="text" 
+                  value={newCmdName} 
+                  onChange={(e) => setNewCmdName(e.target.value)}
                   required
                   style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
                 />
               </label>
 
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                Date et heure de fin souhaitée
-                <input 
-                  type="datetime-local" 
-                  value={newCmdEndDate} 
-                  onChange={(e) => setNewCmdEndDate(e.target.value)}
-                  style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                />
-              </label>
-            </div>
+              <div style={{ display: "flex", gap: "16px" }}>
+                <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Date et heure de début
+                  <input 
+                    type="datetime-local" 
+                    value={newCmdStartDate} 
+                    onChange={(e) => setNewCmdStartDate(e.target.value)}
+                    required
+                    style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                  />
+                </label>
 
-            <div style={{ marginTop: "10px" }}>
-              <h4 style={{ margin: "0 0 10px 0" }}>Références de la commande</h4>
-              {newCmdRefs.map((refItem, index) => (
-                <div key={index} style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
-                  <label style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                    Référence
-                    <select 
-                      value={refItem.refName} 
-                      onChange={(e) => {
-                        const newName = e.target.value
-                        const preset = ALL_PRESETS.find(p => p.name === newName)
-                        const updated = [...newCmdRefs]
-                        updated[index] = { ...updated[index], refName: newName }
-                        if (preset) {
-                          updated[index].gramPerPot = preset.grams
-                        }
-                        setNewCmdRefs(updated)
-                      }}
-                      required
-                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                    >
-                      <option value="" disabled>-- Sélectionner --</option>
-                      {ALL_PRESETS.map(p => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </select>
-                  </label>
+                <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Date et heure de fin souhaitée
+                  <input 
+                    type="datetime-local" 
+                    value={newCmdEndDate} 
+                    onChange={(e) => setNewCmdEndDate(e.target.value)}
+                    style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                  />
+                </label>
+              </div>
 
-                  <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                    Nombre de pots
-                    <input 
-                      type="number" 
-                      value={refItem.potsQty} 
-                      onChange={(e) => {
-                        const updated = [...newCmdRefs]
-                        updated[index] = { ...updated[index], potsQty: Number(e.target.value) }
-                        setNewCmdRefs(updated)
-                      }}
-                      required
-                      min="1"
-                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                    />
-                  </label>
+              <div style={{ marginTop: "10px" }}>
+                <h4 style={{ margin: "0 0 10px 0" }}>Références de la commande</h4>
+                {newCmdRefs.map((refItem, index) => (
+                  <div key={index} style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+                    <label style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                      Référence
+                      <select 
+                        value={refItem.refName} 
+                        onChange={(e) => {
+                          const newName = e.target.value
+                          const preset = ALL_PRESETS.find(p => p.name === newName)
+                          const updated = [...newCmdRefs]
+                          updated[index] = { ...updated[index], refName: newName }
+                          if (preset) {
+                            updated[index].gramPerPot = preset.grams
+                          }
+                          setNewCmdRefs(updated)
+                        }}
+                        required
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                      >
+                        <option value="" disabled>-- Sélectionner --</option>
+                        {ALL_PRESETS.map(p => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
-                    Grammage (g)
-                    <input 
-                      type="number" 
-                      value={refItem.gramPerPot} 
-                      onChange={(e) => {
-                        const updated = [...newCmdRefs]
-                        updated[index] = { ...updated[index], gramPerPot: Number(e.target.value) }
-                        setNewCmdRefs(updated)
-                      }}
-                      required
-                      min="1"
-                      style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
-                    />
-                  </label>
+                    <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                      Nombre de pots
+                      <input 
+                        type="number" 
+                        value={refItem.potsQty} 
+                        onChange={(e) => {
+                          const updated = [...newCmdRefs]
+                          updated[index] = { ...updated[index], potsQty: Number(e.target.value) }
+                          setNewCmdRefs(updated)
+                        }}
+                        required
+                        min="1"
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                      />
+                    </label>
 
-                  {newCmdRefs.length > 1 && (
-                    <button 
-                      type="button" 
-                      onClick={() => setNewCmdRefs(newCmdRefs.filter((_, i) => i !== index))}
-                      className="btn btn-secondary" 
-                      style={{ padding: "8px", color: "var(--danger)", border: "1px solid var(--border-color)", marginBottom: "1px" }}
-                      title="Supprimer la référence"
-                    >
-                      ✕
-                    </button>
-                  )}
+                    <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                      Grammage (g)
+                      <input 
+                        type="number" 
+                        value={refItem.gramPerPot} 
+                        onChange={(e) => {
+                          const updated = [...newCmdRefs]
+                          updated[index] = { ...updated[index], gramPerPot: Number(e.target.value) }
+                          setNewCmdRefs(updated)
+                        }}
+                        required
+                        min="1"
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                      />
+                    </label>
+
+                    {newCmdRefs.length > 1 && (
+                      <button 
+                        type="button" 
+                        onClick={() => setNewCmdRefs(newCmdRefs.filter((_, i) => i !== index))}
+                        className="btn btn-secondary" 
+                        style={{ padding: "8px", color: "var(--danger)", border: "1px solid var(--border-color)", marginBottom: "1px" }}
+                        title="Supprimer la référence"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button 
+                  type="button" 
+                  onClick={() => setNewCmdRefs([...newCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])}
+                  className="btn btn-secondary"
+                  style={{ fontSize: "0.85rem", padding: "6px 12px", marginTop: "4px" }}
+                >
+                  + Ajouter une référence
+                </button>
+              </div>
+
+              <button type="submit" className="btn btn-success" style={{ marginTop: "20px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
+                ✓ Valider la commande
+              </button>
+            </form>
+          );
+
+          if (isInitialModal) {
+            return createPortal(
+              <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", backdropFilter: "blur(4px)" }}>
+                <div style={{ maxWidth: "600px", width: "100%", padding: "30px", borderRadius: "12px", backgroundColor: "#ffffff", boxShadow: "0 10px 25px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
+                  <h2 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center", color: "var(--primary)" }}>Bienvenue ! Créez votre première commande</h2>
+                  <p style={{ textAlign: "center", marginBottom: "20px", color: "var(--text-muted)", fontSize: "0.9rem" }}>Vous devez créer au moins une commande pour utiliser l&apos;application.</p>
+                  {formContent}
                 </div>
-              ))}
-              <button 
-                type="button" 
-                onClick={() => setNewCmdRefs([...newCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])}
-                className="btn btn-secondary"
-                style={{ fontSize: "0.85rem", padding: "6px 12px", marginTop: "4px" }}
+              </div>,
+              document.body
+            );
+          }
+
+          return (
+            <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
+              <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande</h3>
+              {formContent}
+            </div>
+          );
+        })()
+      )}
+
+      {showTLCPopup && mounted && createPortal(
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "#f8fafc",
+          zIndex: 999999,
+          overflowY: "auto",
+        }}>
+          <div style={{
+            width: "100%",
+            minHeight: "100vh",
+            padding: "24px 40px",
+            position: "relative"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, borderBottom: "2px solid var(--border-color)", paddingBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, color: "var(--danger)", fontSize: "1.8rem" }}>⚠️ Lait Insuffisant : Renseigner les futures livraisons</h2>
+                <p style={{ margin: "4px 0 0 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  Ajoutez vos livraisons futures dans les cuves pour combler le manque de lait.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTLCPopup(false)}
+                style={{ border: "none", background: "var(--danger)", color: "white", padding: "10px 24px", borderRadius: 8, fontSize: "1.1rem", cursor: "pointer", fontWeight: "bold" }}
               >
-                + Ajouter une référence
+                ✕ Fermer et retourner
               </button>
             </div>
-
-            <button type="submit" className="btn btn-success" style={{ marginTop: "20px", padding: "10px", fontSize: "1rem", fontWeight: "bold" }}>
-              ✓ Valider la commande
-            </button>
-          </form>
-        </div>
+            <TLC />
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

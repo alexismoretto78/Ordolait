@@ -81,7 +81,7 @@ export function ExecutionCards() {
   const [showRemplissageEndCf, setShowRemplissageEndCf] = useState(false);
   const [showMaturationStart, setShowMaturationStart] = useState(false);
   const [showMaturationEndCf, setShowMaturationEndCf] = useState(false);
-  const [cfFerments, setCfFerments] = useState(0);
+  const [cfFerments, setCfFerments] = useState<number | string>("");
   const [cfPh, setCfPh] = useState<string>("");
   const [initCfDornic, setInitCfDornic] = useState<number | string>("");
   const [initCfPression, setInitCfPression] = useState<number | string>("");
@@ -303,7 +303,7 @@ export function ExecutionCards() {
 
   const handleMaturationStart = (cfName: string) => {
     setCfActiveTank(cfName);
-    setCfFerments(0);
+    setCfFerments("");
     setShowMaturationStart(true);
   }
 
@@ -592,7 +592,7 @@ export function ExecutionCards() {
         <BaseModal title={`Début Maturation ${cfActiveTank}`} onClose={() => setShowMaturationStart(false)} onSubmit={submitMaturationStart}>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Quantité de Ferment (g):</label>
-            <input type="number" value={cfFerments} onChange={e => setCfFerments(Number(e.target.value))} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={cfFerments} onChange={e => setCfFerments(e.target.value)} style={{ width: "100%", padding: "8px" }} />
           </div>
         </BaseModal>
       )}
