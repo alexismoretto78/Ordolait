@@ -47,14 +47,14 @@ const getMilkColor = (milkType?: string) => {
 
 const BaseModal = ({ title, width = "400px", onClose, onSubmit, submitText = "Valider", children }: any) => (
   <div className="modal" style={{ display: "block", background: "rgba(0,0,0,0.5)", position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
-    <div className="modal-content" style={{ background: "white", width, margin: "100px auto", padding: "20px", borderRadius: "8px" }}>
+    <form className="modal-content" onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} style={{ background: "white", width, margin: "100px auto", padding: "20px", borderRadius: "8px" }}>
       <h3 style={{ marginTop: 0 }}>{title}</h3>
       {children}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-        <button onClick={onClose} className="btn btn-secondary">Annuler</button>
-        <button onClick={onSubmit} className="btn btn-primary">{submitText}</button>
+        <button type="button" onClick={onClose} className="btn btn-secondary">Annuler</button>
+        <button type="submit" className="btn btn-primary">{submitText}</button>
       </div>
-    </div>
+    </form>
   </div>
 );
 
@@ -69,6 +69,7 @@ export function ExecutionCards() {
   const [showInitTls, setShowInitTls] = useState(false);
   const [showTransferEndTls, setShowTransferEndTls] = useState(false);
   const [showOsmoseEndTls, setShowOsmoseEndTls] = useState(false);
+  const [showPastoStartTls, setShowPastoStartTls] = useState(false);
   
   const [cfSelectedForPasto, setCfSelectedForPasto] = useState<string[]>([]);
   const [cfVolumes, setCfVolumes] = useState<{ [cfName: string]: number }>({});
@@ -228,6 +229,31 @@ export function ExecutionCards() {
       dispatch(validateTlsOsmoseEnd({ tlsName: tlsActiveTank, permeatVol: Number(permeatVol) || 0, fcvApplied: Number(fcvApplied) || 0 }));
     }
     setShowOsmoseEndTls(false);
+  }
+
+  const handlePastoStart = (tlsName: string) => {
+    setTlsActiveTank(tlsName);
+    const exec = tlsExecution[tlsName];
+    if (exec) {
+      const cmd = commands.find(c => c.id === exec.commandId);
+      const availableCFs = CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide");
+      const preselected = selectCuvesForVolume(exec.currentVolume, cmd?.milkType || "", cmd?.isSkyr, availableCFs);
+      setCfSelectedForPasto(preselected);
+    } else {
+      setCfSelectedForPasto([]);
+    }
+    setShowPastoStartTls(true);
+  }
+
+  const submitPastoStart = () => {
+    if (cfSelectedForPasto.length === 0) {
+      alert("Veuillez sélectionner au moins une cuve.");
+      return;
+    }
+    if (tlsActiveTank) {
+      dispatch(validateTlsPastoStart({ tlsName: tlsActiveTank, selectedCFs: cfSelectedForPasto }));
+    }
+    setShowPastoStartTls(false);
   }
 
   const handleInitCf = (cfName: string) => {
@@ -408,7 +434,7 @@ export function ExecutionCards() {
                 {exec.status === "transfert_en_cours" && <button onClick={() => handleTransferEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Transfert</button>}
                 {exec.status === "attente_osmose" && <button onClick={() => dispatch(validateTlsOsmoseStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Osmose</button>}
                 {exec.status === "osmose_en_cours" && <button onClick={() => handleOsmoseEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Osmose</button>}
-                {exec.status === "attente_pasto" && <button onClick={() => dispatch(validateTlsPastoStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Pasto</button>}
+                {exec.status === "attente_pasto" && <button onClick={() => handlePastoStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Pasto</button>}
               </div>
             </div>
           )
@@ -479,7 +505,6 @@ export function ExecutionCards() {
                     <div><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Pression :</span> <strong>{exec.pression || "-"} bars</strong></div>
                   </div>
                 )}
-                {exec.status === "vide" && <button onClick={() => handleInitCf(tank.name)} className="btn btn-secondary" style={{ width: "100%" }}>Début Remplissage (Manuel)</button>}
                 {exec.status === "attente_remplissage" && <button onClick={() => handleInitCf(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Début Remplissage</button>}
                 {exec.status === "remplissage" && <button onClick={() => handleRemplissageEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Fin Remplissage</button>}
                 {exec.status === "attente_maturation" && <button onClick={() => handleMaturationStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Maturation</button>}
@@ -508,7 +533,7 @@ export function ExecutionCards() {
             <label style={{ display: "block", marginBottom: "5px" }}>Volume Transféré Prévu (L):</label>
             <input type="number" value={transferVol} onChange={e => {
               setTransferVol(Number(e.target.value));
-            }} style={{ width: "100%", padding: "8px", marginBottom: "15px" }} />
+            }} required style={{ width: "100%", padding: "8px", marginBottom: "15px" }} />
           </div>
 
           <h4 style={{ marginTop: "0" }}>Prélèvement TLC (Déduction finale)</h4>
@@ -525,7 +550,7 @@ export function ExecutionCards() {
                 const newDeds = [...tlcDeductions];
                 newDeds[index].volume = Number(e.target.value);
                 setTlcDeductions(newDeds);
-              }} style={{ width: "120px", padding: "8px" }} />
+              }} required style={{ width: "120px", padding: "8px" }} />
               <button onClick={() => setTlcDeductions(tlcDeductions.filter((_, i) => i !== index))} className="btn btn-secondary">X</button>
             </div>
           ))}
@@ -545,12 +570,43 @@ export function ExecutionCards() {
         <BaseModal title={`Valider Fin Osmose (${tlsActiveTank})`} onClose={() => setShowOsmoseEndTls(false)} onSubmit={submitOsmoseEnd}>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Volume de Perméat tiré (L):</label>
-            <input type="number" step="any" value={permeatVol} onChange={e => setPermeatVol(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={permeatVol} onChange={e => setPermeatVol(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>FCV Appliqué:</label>
-            <input type="number" step="any" value={fcvApplied} onChange={e => setFcvApplied(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={fcvApplied} onChange={e => setFcvApplied(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
+        </BaseModal>
+      )}
+
+      {showPastoStartTls && (
+        <BaseModal title={`Démarrer Pasteurisation (${tlsActiveTank})`} width="500px" onClose={() => setShowPastoStartTls(false)} onSubmit={submitPastoStart} submitText="Lancer Pasto">
+          <p style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "15px" }}>
+            Sélectionnez les cuves de fermentation pour la réception de la masse blanche :
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "15px" }}>
+            {CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide").map(t => (
+              <label key={t.name} style={{ display: "flex", alignItems: "center", gap: "5px", background: cfSelectedForPasto.includes(t.name) ? "var(--primary-light)" : "#f1f5f9", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", border: cfSelectedForPasto.includes(t.name) ? "1px solid var(--primary)" : "1px solid transparent" }}>
+                <input 
+                  type="checkbox" 
+                  checked={cfSelectedForPasto.includes(t.name)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setCfSelectedForPasto([...cfSelectedForPasto, t.name]);
+                    } else {
+                      setCfSelectedForPasto(cfSelectedForPasto.filter(cf => cf !== t.name));
+                    }
+                  }}
+                  style={{ display: "none" }}
+                />
+                <span style={{ fontWeight: 600, color: cfSelectedForPasto.includes(t.name) ? "var(--primary-dark)" : "var(--text-main)" }}>{t.name}</span>
+                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>({t.capacity}L)</span>
+              </label>
+            ))}
+          </div>
+          {cfSelectedForPasto.length === 0 && (
+            <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginTop: "-5px", marginBottom: "15px" }}>⚠️ Veuillez sélectionner au moins une cuve.</p>
+          )}
         </BaseModal>
       )}
 
@@ -566,15 +622,15 @@ export function ExecutionCards() {
           )}
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Acidité dornique (°D):</label>
-            <input type="number" step="any" value={initCfDornic} onChange={e => setInitCfDornic(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={initCfDornic} onChange={e => setInitCfDornic(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Pression (bars):</label>
-            <input type="number" step="any" value={initCfPression} onChange={e => setInitCfPression(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={initCfPression} onChange={e => setInitCfPression(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Température de pasteurisation (°C):</label>
-            <input type="number" step="any" value={initCfTempPasto} onChange={e => setInitCfTempPasto(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={initCfTempPasto} onChange={e => setInitCfTempPasto(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
         </BaseModal>
       )}
@@ -583,7 +639,7 @@ export function ExecutionCards() {
         <BaseModal title={`Fin Remplissage ${cfActiveTank}`} onClose={() => setShowRemplissageEndCf(false)} onSubmit={submitRemplissageEnd} submitText="Valider le remplissage">
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Confirmer le Volume Rempli (L):</label>
-            <input type="number" value={cfVol} onChange={e => setCfVol(Number(e.target.value))} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" value={cfVol} onChange={e => setCfVol(Number(e.target.value))} required style={{ width: "100%", padding: "8px" }} />
           </div>
         </BaseModal>
       )}
@@ -592,7 +648,7 @@ export function ExecutionCards() {
         <BaseModal title={`Début Maturation ${cfActiveTank}`} onClose={() => setShowMaturationStart(false)} onSubmit={submitMaturationStart}>
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Quantité de Ferment (g):</label>
-            <input type="number" step="any" value={cfFerments} onChange={e => setCfFerments(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={cfFerments} onChange={e => setCfFerments(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
         </BaseModal>
       )}
@@ -601,7 +657,7 @@ export function ExecutionCards() {
         <BaseModal title={`Fin Maturation ${cfActiveTank}`} onClose={() => setShowMaturationEndCf(false)} onSubmit={submitMaturationEnd} submitText="Mettre en attente de soutirage">
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>pH :</label>
-            <input type="number" step="any" value={cfPh} onChange={e => setCfPh(e.target.value)} style={{ width: "100%", padding: "8px" }} />
+            <input type="number" step="any" value={cfPh} onChange={e => setCfPh(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
         </BaseModal>
       )}

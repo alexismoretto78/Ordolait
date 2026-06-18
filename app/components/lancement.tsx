@@ -266,7 +266,7 @@ export default function Lancement() {
 
                   {/* ATIA PILOT */}
                   {needsAtia && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: needsGrunwald ? "1px dashed var(--border-color)" : "none" }}>
+                    <form onSubmit={(e) => { e.preventDefault(); dispatch(launchRefToMachine({ cmdId: activeCommand.id, refId: ref.id, machine: "atia" })); }} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: needsGrunwald ? "1px dashed var(--border-color)" : "none", margin: 0 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--primary)" }}>Ligne ATIA</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -294,8 +294,7 @@ export default function Lancement() {
                           <span className="launch-sent-ok">✓ Envoyé sur ATIA</span>
                         ) : (
                           <button
-                            type="button"
-                            onClick={() => dispatch(launchRefToMachine({ cmdId: activeCommand.id, refId: ref.id, machine: "atia" }))}
+                            type="submit"
                             className="btn-launch-machine btn-atia"
                             style={{ padding: "8px 16px", borderRadius: "6px", fontSize: "0.8rem" }}
                           >
@@ -303,12 +302,12 @@ export default function Lancement() {
                           </button>
                         )}
                       </div>
-                    </div>
+                    </form>
                   )}
 
                   {/* GRUNWALD PILOT */}
                   {needsGrunwald && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                    <form onSubmit={(e) => { e.preventDefault(); dispatch(launchRefToMachine({ cmdId: activeCommand.id, refId: ref.id, machine: "grunwald" })); }} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", margin: 0 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--success)" }}>Ligne GRUNWALD</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -336,8 +335,7 @@ export default function Lancement() {
                           <span className="launch-sent-ok">✓ Envoyé sur GRUNWALD</span>
                         ) : (
                           <button
-                            type="button"
-                            onClick={() => dispatch(launchRefToMachine({ cmdId: activeCommand.id, refId: ref.id, machine: "grunwald" }))}
+                            type="submit"
                             className="btn-launch-machine btn-grunwald"
                             style={{ padding: "8px 16px", borderRadius: "6px", fontSize: "0.8rem" }}
                           >
@@ -345,7 +343,7 @@ export default function Lancement() {
                           </button>
                         )}
                       </div>
-                    </div>
+                    </form>
                   )}
 
                 </div>

@@ -1976,15 +1976,14 @@ const orderSlice = createSlice({
         exec.times.osmoseEnd = new Date().toISOString()
       }
     },
-    validateTlsPastoStart(state, action: PayloadAction<{ tlsName: string }>) {
+    validateTlsPastoStart(state, action: PayloadAction<{ tlsName: string, selectedCFs: string[] }>) {
       const exec = state.tlsExecution[action.payload.tlsName]
       if (exec) {
         const cmdId = exec.commandId
         const cmd = state.commands.find(c => c.id === cmdId)
         
-        // Find available CFs
-        const availableCFs = CF_TANKS.filter(t => state.cfExecution[t.name]?.status === "vide")
-        const sequence = selectCuvesForVolume(exec.currentVolume, cmd?.milkType || "", cmd?.isSkyr, availableCFs)
+        // Use user-provided sequence of CFs
+        const sequence = action.payload.selectedCFs
         
         // Allocate volumes
         const cfVolumes: {[key: string]: number} = {}
