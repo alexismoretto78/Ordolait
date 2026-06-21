@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
+import { TLC_TANKS, addMilkOrder, receiveMilkOrder, getTLCStats, MilkType } from "../lib/orderSlice"
 import { createPortal } from "react-dom"
 import { RootState } from "../lib/store"
 import { addCommand, deleteCommand, completeCommand, setActiveCommand, updateCommandName, updateCommand, setRefDestination, launchRefToMachine, reorderCommands } from "../lib/orderSlice"
+import { saveCompletedCommand } from '../lib/dbSync';
 import TLC from "./tlc"
 
 const ALL_PRESETS = [
@@ -490,6 +492,7 @@ export default function Commande() {
                             onClick={(e) => {
                               e.stopPropagation()
                               if (confirm("Valider la fin de cette commande ? Elle sera déplacée vers les terminées.")) {
+                                saveCompletedCommand(cmd)
                                 dispatch(completeCommand(cmd.id))
                               }
                             }}

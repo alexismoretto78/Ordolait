@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useSelector, useDispatch } from "react-redux"
 import { RootState } from "../lib/store"
 import { TLC_TANKS, getTLCStats, milkTypeConfigs, receiveMilkOrder } from "../lib/orderSlice"
+import { saveCompletedReception } from "../lib/dbSync"
 import { ExecutionCards } from "./ExecutionCards"
 
 
@@ -29,23 +30,30 @@ export default function Journee() {
     const d = new Date()
     const lotNumber = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`
 
+    const batchData = {
+      lotNumber,
+      volume: Number(realQty),
+      protein: 33.0,
+      fat: 38.0,
+      deliveryDate: d.getTime(),
+      temperature: 4.0,
+      snapTest: true,
+      ph: 6.7,
+      aciditeDornic: 16.0,
+      litrageBL: Number(realQty),
+      fcv3Mp: order?.milkType === "fcv3" ? 34.0 : undefined
+    };
+
+    saveCompletedReception({
+      ...batchData,
+      milkType: order?.milkType || "bio",
+    });
+
     dispatch(receiveMilkOrder({
       orderId: selectedOrderId,
       tank: receptionTank,
       isComplete: true,
-      batchData: {
-        lotNumber,
-        volume: Number(realQty),
-        protein: 33.0,
-        fat: 38.0,
-        deliveryDate: d.getTime(),
-        temperature: 4.0,
-        snapTest: true,
-        ph: 6.7,
-        aciditeDornic: 16.0,
-        litrageBL: Number(realQty),
-        fcv3Mp: order?.milkType === "fcv3" ? 34.0 : undefined
-      }
+      batchData
     }))
     
     setReceptionTank(null)

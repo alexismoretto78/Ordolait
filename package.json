@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@reduxjs/toolkit": "^2.12.0",
     "next": "^14.0.0",
     "react": "^18.0.0",
@@ -23,7 +24,15 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.0.0",
+    "prisma": "^5.22.0",
     "typescript": "^5",
     "vitest": "^4.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
   }
 }

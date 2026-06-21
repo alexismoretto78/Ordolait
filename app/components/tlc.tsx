@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { RootState } from "../lib/store"
 import { TLC_TANKS, addMilkOrder, receiveMilkOrder, getTLCStats, MilkType } from "../lib/orderSlice"
+import { saveCompletedReception } from "../lib/dbSync"
 
 const milkTypeConfigs: Record<string, any> = {
   bio: { label: "Bio", color: "var(--success)", gradient: "linear-gradient(180deg, #86efac 0%, #22c55e 100%)", emoji: "🌱" },
@@ -82,23 +83,30 @@ export default function TLC() {
     const d = new Date(receptionDate)
     const lotNumber = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`
 
+    const batchData = {
+      lotNumber,
+      volume: Number(realQty),
+      protein: Number(controlMp),
+      fat: Number(controlMg),
+      deliveryDate: d.getTime(),
+      temperature: Number(controlTemp),
+      snapTest: controlSnap,
+      ph: Number(controlPh),
+      aciditeDornic: Number(controlAcidite),
+      litrageBL: Number(controlLitrageBL),
+      fcv3Mp: order?.milkType === "fcv3" ? Number(controlFcv3Mp) : undefined
+    };
+
+    saveCompletedReception({
+      ...batchData,
+      milkType: order?.milkType || "bio",
+    });
+
     dispatch(receiveMilkOrder({
       orderId: selectedOrderId,
       tank: destTank,
       isComplete: closeOrder,
-      batchData: {
-        lotNumber,
-        volume: Number(realQty),
-        protein: Number(controlMp),
-        fat: Number(controlMg),
-        deliveryDate: d.getTime(),
-        temperature: Number(controlTemp),
-        snapTest: controlSnap,
-        ph: Number(controlPh),
-        aciditeDornic: Number(controlAcidite),
-        litrageBL: Number(controlLitrageBL),
-        fcv3Mp: order?.milkType === "fcv3" ? Number(controlFcv3Mp) : undefined
-      }
+      batchData
     }))
     
     setShowControlPopup(false)

@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CompletedCommand {
+  id                 String   @id @default(cuid())
+  name               String
+  status             String
+  whiteMassKg        Float
+  milkReceivedVolume Float
+  targetValue        Float
+  osmosedVolume      Float
+  milkType           String
+  isSkyr             Boolean
+  completedAt        DateTime @default(now())
+  references         Reference[]
+}
+
+model Reference {
+  id                 String   @id @default(cuid())
+  commandId          String
+  command            CompletedCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  name               String
+  potsQty            Int
+  gramPerPot         Float
+}
+
+model CompletedReception {
+  id                 String   @id @default(cuid())
+  lotNumber          String
+  volume             Float
+  protein            Float
+  fat                Float
+  milkType           String
+  deliveryDate       DateTime
+  completedAt        DateTime @default(now())
+}
