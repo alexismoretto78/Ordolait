@@ -9,7 +9,7 @@ export async function saveCompletedCommand(cmd: Command) {
       },
       body: JSON.stringify({
         name: cmd.name,
-        status: cmd.status,
+        status: "Terminée",
         whiteMassKg: cmd.whiteMassKg,
         milkReceivedVolume: cmd.milkReceivedVolume,
         targetValue: cmd.targetValue,

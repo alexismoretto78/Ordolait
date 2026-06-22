@@ -36,13 +36,13 @@ export default function Commande() {
   const [newCmdName, setNewCmdName] = useState("Nouvelle Commande")
   const [newCmdStartDate, setNewCmdStartDate] = useState(new Date().toISOString().slice(0, 16))
   const [newCmdEndDate, setNewCmdEndDate] = useState("")
-  const [newCmdRefs, setNewCmdRefs] = useState([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])
+  const [newCmdRefs, setNewCmdRefs] = useState<{refName: string, potsQty: number, gramPerPot: number, startDate: string, destination: "both" | "atia" | "grunwald"}>([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])
 
   const [editingCmdId, setEditingCmdId] = useState<string | null>(null)
   const [editCmdName, setEditCmdName] = useState("")
   const [editCmdStartDate, setEditCmdStartDate] = useState("")
   const [editCmdEndDate, setEditCmdEndDate] = useState("")
-  const [editCmdRefs, setEditCmdRefs] = useState<{ refName: string; potsQty: number; gramPerPot: number }[]>([])
+  const [editCmdRefs, setEditCmdRefs] = useState<{ refName: string; potsQty: number; gramPerPot: number; startDate: string; destination: "both" | "atia" | "grunwald" }[]>([])
 
   const [expandedCompletedCmdId, setExpandedCompletedCmdId] = useState<string | null>(null);
 
@@ -51,33 +51,47 @@ export default function Commande() {
     setEditCmdName(cmd.name)
     setEditCmdStartDate(cmd.startDate || "")
     setEditCmdEndDate(cmd.expectedEndDate || "")
-    setEditCmdRefs(cmd.references.map((r: any) => ({ refName: r.name, potsQty: r.potsQty, gramPerPot: r.gramPerPot })))
+    setEditCmdRefs(cmd.references.map((r: any) => ({ refName: r.name, potsQty: r.potsQty, gramPerPot: r.gramPerPot, startDate: r.startDate || "", destination: cmd.refDestinations?.[r.id] || "both" })))
   }
 
   const handleSaveEditCommand = (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingCmdId) return
+
+    const invalidRef = editCmdRefs.find(r => r.startDate && editCmdStartDate && new Date(r.startDate) < new Date(editCmdStartDate))
+    if (invalidRef) {
+      alert(`L'heure de début de la référence ${invalidRef.refName} ne peut pas être antérieure à l'heure de début de la commande.`)
+      return
+    }
+
     dispatch(updateCommand({
       id: editingCmdId,
       name: editCmdName,
       startDate: editCmdStartDate,
       expectedEndDate: editCmdEndDate,
-      references: editCmdRefs.map(r => ({ ...r, potsQty: Number(r.potsQty), gramPerPot: Number(r.gramPerPot) }))
+      references: editCmdRefs.map(r => ({ ...r, potsQty: Number(r.potsQty), gramPerPot: Number(r.gramPerPot), startDate: r.startDate, destination: r.destination }))
     }))
     setEditingCmdId(null)
   }
 
   const handleAddCommand = (e: React.FormEvent) => {
     e.preventDefault()
+
+    const invalidRef = newCmdRefs.find(r => r.startDate && newCmdStartDate && new Date(r.startDate) < new Date(newCmdStartDate))
+    if (invalidRef) {
+      alert(`L'heure de début de la référence ${invalidRef.refName} ne peut pas être antérieure à l'heure de début de la commande.`)
+      return
+    }
+
     dispatch(addCommand({
       name: newCmdName,
       startDate: newCmdStartDate,
       expectedEndDate: newCmdEndDate,
-      references: newCmdRefs.map(r => ({ ...r, potsQty: Number(r.potsQty), gramPerPot: Number(r.gramPerPot) }))
+      references: newCmdRefs.map(r => ({ ...r, potsQty: Number(r.potsQty), gramPerPot: Number(r.gramPerPot), startDate: r.startDate, destination: r.destination }))
     }))
     setActiveSubTab("encours")
     setNewCmdName("Nouvelle Commande")
-    setNewCmdRefs([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])
+    setNewCmdRefs([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])
   }
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -361,6 +375,37 @@ export default function Commande() {
                                 />
                               </label>
 
+                              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                                Début
+                                <input 
+                                  type="datetime-local" 
+                                  value={refItem.startDate || ""} 
+                                  onChange={(e) => {
+                                    const updated = [...editCmdRefs]
+                                    updated[index] = { ...updated[index], startDate: e.target.value }
+                                    setEditCmdRefs(updated)
+                                  }}
+                                  style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                                />
+                              </label>
+
+                              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                                Machine
+                                <select 
+                                  value={refItem.destination} 
+                                  onChange={(e) => {
+                                    const updated = [...editCmdRefs]
+                                    updated[index] = { ...updated[index], destination: e.target.value as "both" | "atia" | "grunwald" }
+                                    setEditCmdRefs(updated)
+                                  }}
+                                  style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                                >
+                                  <option value="both">ATIA + GRUN</option>
+                                  <option value="atia">ATIA</option>
+                                  <option value="grunwald">GRUNWALD</option>
+                                </select>
+                              </label>
+
                               {editCmdRefs.length > 1 && (
                                 <button 
                                   type="button" 
@@ -376,7 +421,7 @@ export default function Commande() {
                           ))}
                           <button 
                             type="button" 
-                            onClick={() => setEditCmdRefs([...editCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])}
+                            onClick={() => setEditCmdRefs([...editCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])}
                             className="btn btn-secondary"
                             style={{ fontSize: "0.85rem", padding: "6px 12px", marginTop: "4px" }}
                           >
@@ -430,7 +475,10 @@ export default function Commande() {
                           <div style={{ marginTop: "8px", fontSize: "0.85rem", display: "flex", flexDirection: "column", gap: "8px" }}>
                             {cmd.references.map(r => (
                               <div key={r.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-                                <span><strong>{r.name}</strong> - {r.potsQty} pots ({r.gramPerPot}g)</span>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <span><strong>{r.name}</strong> - {r.potsQty} pots ({r.gramPerPot}g)</span>
+                                  {r.startDate && <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Début : {new Date(r.startDate).toLocaleString()}</span>}
+                                </div>
                                 
                                 <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginRight: "4px" }}>Machine :</span>
@@ -491,14 +539,24 @@ export default function Commande() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (cmd.status !== "dispatched") {
+                                alert("La commande n'a pas encore passé toutes les étapes de production (conditionnement). Elle ne peut pas être terminée.");
+                                return;
+                              }
                               if (confirm("Valider la fin de cette commande ? Elle sera déplacée vers les terminées.")) {
                                 saveCompletedCommand(cmd)
                                 dispatch(completeCommand(cmd.id))
                               }
                             }}
                             className="btn btn-primary"
-                            style={{ padding: "6px 12px", fontSize: "0.85rem", backgroundColor: "var(--success)" }}
-                            title="Valider que la production est terminée"
+                            style={{ 
+                              padding: "6px 12px", 
+                              fontSize: "0.85rem", 
+                              backgroundColor: cmd.status === "dispatched" ? "var(--success)" : "var(--text-muted)",
+                              cursor: cmd.status === "dispatched" ? "pointer" : "not-allowed",
+                              opacity: cmd.status === "dispatched" ? 1 : 0.6
+                            }}
+                            title={cmd.status === "dispatched" ? "Valider que la production est terminée" : "La commande doit être totalement conditionnée pour être terminée"}
                           >
                             ✅ Terminer
                           </button>
@@ -775,6 +833,37 @@ export default function Commande() {
                       />
                     </label>
 
+                    <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                      Début
+                      <input 
+                        type="datetime-local" 
+                        value={refItem.startDate || ""} 
+                        onChange={(e) => {
+                          const updated = [...newCmdRefs]
+                          updated[index] = { ...updated[index], startDate: e.target.value }
+                          setNewCmdRefs(updated)
+                        }}
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                      />
+                    </label>
+
+                    <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
+                      Machine
+                      <select 
+                        value={refItem.destination} 
+                        onChange={(e) => {
+                          const updated = [...newCmdRefs]
+                          updated[index] = { ...updated[index], destination: e.target.value as "both" | "atia" | "grunwald" }
+                          setNewCmdRefs(updated)
+                        }}
+                        style={{ padding: "8px", borderRadius: "4px", border: "1px solid var(--border-color)" }}
+                      >
+                        <option value="both">ATIA + GRUNWALD</option>
+                        <option value="atia">ATIA Uniquement</option>
+                        <option value="grunwald">GRUNWALD Uniquement</option>
+                      </select>
+                    </label>
+
                     {newCmdRefs.length > 1 && (
                       <button 
                         type="button" 
@@ -790,7 +879,7 @@ export default function Commande() {
                 ))}
                 <button 
                   type="button" 
-                  onClick={() => setNewCmdRefs([...newCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105 }])}
+                  onClick={() => setNewCmdRefs([...newCmdRefs, { refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])}
                   className="btn btn-secondary"
                   style={{ fontSize: "0.85rem", padding: "6px 12px", marginTop: "4px" }}
                 >
@@ -807,7 +896,7 @@ export default function Commande() {
           if (isInitialModal) {
             return createPortal(
               <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", backdropFilter: "blur(4px)" }}>
-                <div style={{ maxWidth: "600px", width: "100%", padding: "30px", borderRadius: "12px", backgroundColor: "#ffffff", boxShadow: "0 10px 25px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
+                <div style={{ maxWidth: "1000px", width: "100%", padding: "30px", borderRadius: "12px", backgroundColor: "#ffffff", boxShadow: "0 10px 25px rgba(0,0,0,0.2)", maxHeight: "95vh", overflowY: "auto" }}>
                   <h2 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center", color: "var(--primary)" }}>Bienvenue ! Créez votre première commande</h2>
                   <p style={{ textAlign: "center", marginBottom: "20px", color: "var(--text-muted)", fontSize: "0.9rem" }}>Vous devez créer au moins une commande pour utiliser l&apos;application.</p>
                   {formContent}
@@ -818,7 +907,7 @@ export default function Commande() {
           }
 
           return (
-            <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
+            <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "20px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", backgroundColor: "#f8fafc" }}>
               <h3 style={{ marginTop: 0, marginBottom: "20px", textAlign: "center" }}>Nouvelle Commande</h3>
               {formContent}
             </div>

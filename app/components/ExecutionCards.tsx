@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../lib/store';
 import { 
   TLS_TANKS, CF_TANKS, TLC_TANKS, milkTypeConfigs, 
   initTlsTransfer, validateTlsTransferEnd, validateTlsOsmoseStart, validateTlsOsmoseEnd, validateTlsPastoStart,
   initCfRemplissage, validateCfMaturationStart, validateCfMaturationEnd, validateCfSoutirageStart, validateCfSoutirageEnd, validateCfLavageStart, validateCfLavageEnd,
-  validateCfRemplissageStart, validateCfRemplissageEnd, selectCuvesForVolume
+  validateCfRemplissageStart, validateCfRemplissageEnd, autoCompleteCfRemplissage, selectCuvesForVolume
 } from '../lib/orderSlice';
 
 function getTheoTime(startMin: number, prodStart: string, delayMinutes: number = 0) {
@@ -31,6 +31,7 @@ const getStatusColor = (status: string) => {
     case "attente_pasto": return "hsl(275, 80%, 60%)";
     case "pasto_en_cours": return "hsl(220, 80%, 40%)";
     case "remplissage": return "hsl(195, 80%, 45%)";
+    case "a_valider_remplissage": return "hsl(195, 60%, 55%)";
     case "maturation_en_cours": return "hsl(150, 60%, 45%)";
     case "attente_soutirage": return "hsl(95, 60%, 45%)";
     case "soutirage_en_cours": return "hsl(345, 80%, 55%)";
@@ -64,6 +65,23 @@ export function ExecutionCards() {
 
   // Modals state for TLS
   const [tlsActiveTank, setTlsActiveTank] = useState<string | null>(null);
+
+  const isAnyRemplissage = Object.values(cfExecution || {}).some((exec: any) => exec.status === "remplissage");
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Object.entries(cfExecution || {}).forEach(([cfName, exec]: [string, any]) => {
+        if (exec.status === "remplissage" && exec.times.remplissageStart && exec.currentVolume > 0) {
+          const fillTotalMs = (exec.currentVolume / 5000) * 3600 * 1000;
+          const fillElapsedMs = Date.now() - new Date(exec.times.remplissageStart).getTime();
+          if (fillElapsedMs >= fillTotalMs) {
+            dispatch(autoCompleteCfRemplissage({ cfName }));
+          }
+        }
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cfExecution, dispatch]);
   
   // Modals
   const [showInitTls, setShowInitTls] = useState(false);
@@ -95,6 +113,8 @@ export function ExecutionCards() {
   
   const [permeatVol, setPermeatVol] = useState<number | string>("");
   const [fcvApplied, setFcvApplied] = useState<number | string>("");
+  const [mpFinal, setMpFinal] = useState<number | string>("");
+  const [mgFinal, setMgFinal] = useState<number | string>("");
 
   const [cfVol, setCfVol] = useState(0);
 
@@ -221,12 +241,20 @@ export function ExecutionCards() {
     setTlsActiveTank(tlsName);
     setPermeatVol("");
     setFcvApplied("");
+    setMpFinal("");
+    setMgFinal("");
     setShowOsmoseEndTls(true);
   }
 
   const submitOsmoseEnd = () => {
     if (tlsActiveTank) {
-      dispatch(validateTlsOsmoseEnd({ tlsName: tlsActiveTank, permeatVol: Number(permeatVol) || 0, fcvApplied: Number(fcvApplied) || 0 }));
+      dispatch(validateTlsOsmoseEnd({ 
+        tlsName: tlsActiveTank, 
+        permeatVol: Number(permeatVol) || 0, 
+        fcvApplied: Number(fcvApplied) || 0,
+        mpFinal: Number(mpFinal) || 0,
+        mgFinal: Number(mgFinal) || 0
+      }));
     }
     setShowOsmoseEndTls(false);
   }
@@ -358,7 +386,7 @@ export function ExecutionCards() {
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", padding: "4px 0", borderBottom: "1px dashed #e2e8f0" }}>
         <span style={{ color: "var(--text-muted)" }}>{label}</span>
         <div style={{ display: "flex", gap: "8px" }}>
-          {theoStr && !realStr && <span style={{ color: "#64748b" }}>Théo: {theoStr}</span>}
+          {theoStr && <span style={{ color: "#64748b" }}>Théo: {theoStr}</span>}
           {realStr && <span style={{ color: "var(--primary-dark)", fontWeight: 600 }}>Réel: {realStr}</span>}
         </div>
       </div>
@@ -395,17 +423,30 @@ export function ExecutionCards() {
           }
 
           return (
-            <div key={tank.name} style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "16px", background: "#fff", display: "flex", flexDirection: "column", gap: "12px", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong style={{ fontSize: "1.1rem" }}>{tank.name}</strong>
-                {exec.status !== "vide" ? (
-                  <span style={{ fontSize: "0.85rem", background: "var(--primary)", color: "white", padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>
-                    {exec.status.replace(/_/g, " ").toUpperCase()}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Vide</span>
-                )}
-              </div>
+            <div key={tank.name} style={{ position: "relative", overflow: "hidden", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "16px", background: "#fff", display: "flex", flexDirection: "column", gap: "12px", boxShadow: "var(--shadow-sm)" }}>
+              {(() => {
+                if (exec.status !== "vide" && exec.currentVolume > 0) {
+                  if (exec.status === "pasto_en_cours" && exec.times.pastoStart) {
+                    const emptyTotalMs = (exec.currentVolume / 5000) * 3600 * 1000;
+                    const emptyElapsedMs = Date.now() - new Date(exec.times.pastoStart).getTime();
+                    return <div className="cf-liquid" style={{ animationName: "drainDown", animationDuration: `${emptyTotalMs}ms`, animationDelay: `-${emptyElapsedMs}ms` }} />;
+                  } else {
+                    return <div className="cf-liquid" style={{ height: "100%" }} />;
+                  }
+                }
+                return null;
+              })()}
+              <div className="cf-content" style={{ display: "flex", flexDirection: "column", gap: "12px", flex: 1, zIndex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ fontSize: "1.1rem" }}>{tank.name}</strong>
+                  {exec.status !== "vide" ? (
+                    <span style={{ fontSize: "0.85rem", background: "var(--primary)", color: "white", padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>
+                      {exec.status.replace(/_/g, " ").toUpperCase()}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Vide</span>
+                  )}
+                </div>
 
               {cmd && (
                 <div style={{ background: "var(--bg-app)", padding: "8px", borderRadius: "6px", fontSize: "0.9rem" }}>
@@ -427,6 +468,7 @@ export function ExecutionCards() {
 
               <div style={{ fontSize: "0.95rem", textAlign: "right", color: "var(--text-main)", fontWeight: 600 }}>
                 {(exec.currentVolume || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
+                {(exec.mpFinal || exec.mgFinal) ? <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>MP: {exec.mpFinal || "-"} | MG: {exec.mgFinal || "-"}</div> : null}
               </div>
 
               <div style={{ marginTop: "auto", paddingTop: "8px" }}>
@@ -435,6 +477,7 @@ export function ExecutionCards() {
                 {exec.status === "attente_osmose" && <button onClick={() => dispatch(validateTlsOsmoseStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Osmose</button>}
                 {exec.status === "osmose_en_cours" && <button onClick={() => handleOsmoseEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Osmose</button>}
                 {exec.status === "attente_pasto" && <button onClick={() => handlePastoStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Pasto</button>}
+              </div>
               </div>
             </div>
           )
@@ -465,10 +508,47 @@ export function ExecutionCards() {
             }
           }
 
+          let cardClass = "cuve-card";
+          if (exec.status === "en_lavage") cardClass += " cf-card-washing";
+          else if (exec.status === "maturation_en_cours") cardClass += " cf-card-maturation";
+          else if (exec.status === "soutirage_en_cours") cardClass += " cf-card-soutirage";
+
+          let isReport = false;
+          if (["maturation_en_cours", "attente_soutirage"].includes(exec.status) && exec.times.maturationStart) {
+            const elapsed = Date.now() - new Date(exec.times.maturationStart).getTime();
+            if (elapsed > 24 * 3600 * 1000) {
+               isReport = true;
+               cardClass += " cf-card-report";
+            }
+          }
+
           return (
-            <div key={tank.name} style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "16px", background: "#fff", display: "flex", flexDirection: "column", gap: "10px", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong style={{ fontSize: "1.1rem", color: "var(--primary-dark)" }}>{tank.name}</strong>
+            <div key={tank.name} className={cardClass} style={{ position: "relative", overflow: "hidden", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "16px", background: "#fff", display: "flex", flexDirection: "column", gap: "10px", boxShadow: "var(--shadow-sm)" }}>
+              {(() => {
+                if (exec.status !== "vide" && exec.currentVolume > 0) {
+                  if ((exec.status === "remplissage" || exec.status === "a_valider_remplissage") && (exec.times as any).remplissageStart) {
+                    if (exec.status === "a_valider_remplissage") {
+                      return <div className="cf-liquid" style={{ height: "100%" }} />;
+                    }
+                    const fillTotalMs = (exec.currentVolume / 5000) * 3600 * 1000;
+                    const fillElapsedMs = Date.now() - new Date((exec.times as any).remplissageStart).getTime();
+                    return <div className="cf-liquid" style={{ animationName: "fillUp", animationDuration: `${fillTotalMs}ms`, animationDelay: `-${fillElapsedMs}ms` }} />;
+                  } else if (exec.status === "soutirage_en_cours" && exec.times.soutirageStart) {
+                    const drainTotalMs = 90 * 60 * 1000; // 90 min max
+                    const drainElapsedMs = Date.now() - new Date(exec.times.soutirageStart).getTime();
+                    return <div className="cf-liquid" style={{ animationName: "drainDown", animationDuration: `${drainTotalMs}ms`, animationDelay: `-${drainElapsedMs}ms` }} />;
+                  } else if (exec.status !== "a_laver" && exec.status !== "en_lavage") {
+                    return <div className="cf-liquid" style={{ height: "100%" }} />;
+                  }
+                }
+                return null;
+              })()}
+              <div className="cf-content" style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ fontSize: "1.1rem", color: "var(--primary-dark)" }}>
+                    {tank.name}
+                    {isReport && <span style={{ marginLeft: "8px", fontSize: "0.7rem", background: "var(--danger)", color: "white", padding: "2px 6px", borderRadius: "10px", verticalAlign: "middle" }}>⚠️ REPORT</span>}
+                  </strong>
                 {exec.status !== "vide" ? (
                   <span style={{ fontSize: "0.85rem", background: getStatusColor(exec.status), color: "white", padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>
                     {exec.status.replace(/_/g, " ").toUpperCase()}
@@ -505,14 +585,15 @@ export function ExecutionCards() {
                     <div><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Pression :</span> <strong>{exec.pression || "-"} bars</strong></div>
                   </div>
                 )}
-                {exec.status === "attente_remplissage" && <button onClick={() => handleInitCf(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Début Remplissage</button>}
-                {exec.status === "remplissage" && <button onClick={() => handleRemplissageEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Fin Remplissage</button>}
+                {exec.status === "attente_remplissage" && <button disabled={isAnyRemplissage} onClick={() => handleInitCf(tank.name)} className="btn btn-primary" style={{ width: "100%", opacity: isAnyRemplissage ? 0.5 : 1, cursor: isAnyRemplissage ? "not-allowed" : "pointer" }}>{isAnyRemplissage ? "Pasto occupée" : "Début Remplissage"}</button>}
+                {(exec.status === "remplissage" || exec.status === "a_valider_remplissage") && <button onClick={() => handleRemplissageEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Fin Remplissage</button>}
                 {exec.status === "attente_maturation" && <button onClick={() => handleMaturationStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Maturation</button>}
                 {exec.status === "maturation_en_cours" && <button onClick={() => handleMaturationEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Maturation</button>}
                 {exec.status === "attente_soutirage" && <button onClick={() => dispatch(validateCfSoutirageStart({ cfName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Soutirage</button>}
                 {exec.status === "soutirage_en_cours" && <button onClick={() => dispatch(validateCfSoutirageEnd({ cfName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Fin de soutirage</button>}
                 {exec.status === "a_laver" && <button onClick={() => dispatch(validateCfLavageStart({ cfName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Laver</button>}
                 {exec.status === "en_lavage" && <button onClick={() => dispatch(validateCfLavageEnd({ cfName: tank.name }))} className="btn btn-success" style={{ width: "100%" }}>Fin de lavage (Propre & Vide)</button>}
+              </div>
               </div>
             </div>
           )
@@ -576,6 +657,16 @@ export function ExecutionCards() {
             <label style={{ display: "block", marginBottom: "5px" }}>FCV Appliqué:</label>
             <input type="number" step="any" value={fcvApplied} onChange={e => setFcvApplied(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
           </div>
+          <div style={{ marginBottom: "15px", display: "flex", gap: "10px" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", marginBottom: "5px" }}>MP Finale:</label>
+              <input type="number" step="any" value={mpFinal} onChange={e => setMpFinal(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", marginBottom: "5px" }}>MG Finale:</label>
+              <input type="number" step="any" value={mgFinal} onChange={e => setMgFinal(e.target.value)} required style={{ width: "100%", padding: "8px" }} />
+            </div>
+          </div>
         </BaseModal>
       )}
 
@@ -585,24 +676,33 @@ export function ExecutionCards() {
             Sélectionnez les cuves de fermentation pour la réception de la masse blanche :
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "15px" }}>
-            {CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide").map(t => (
-              <label key={t.name} style={{ display: "flex", alignItems: "center", gap: "5px", background: cfSelectedForPasto.includes(t.name) ? "var(--primary-light)" : "#f1f5f9", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", border: cfSelectedForPasto.includes(t.name) ? "1px solid var(--primary)" : "1px solid transparent" }}>
-                <input 
-                  type="checkbox" 
-                  checked={cfSelectedForPasto.includes(t.name)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setCfSelectedForPasto([...cfSelectedForPasto, t.name]);
-                    } else {
-                      setCfSelectedForPasto(cfSelectedForPasto.filter(cf => cf !== t.name));
-                    }
-                  }}
-                  style={{ display: "none" }}
-                />
-                <span style={{ fontWeight: 600, color: cfSelectedForPasto.includes(t.name) ? "var(--primary-dark)" : "var(--text-main)" }}>{t.name}</span>
-                <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>({t.capacity}L)</span>
-              </label>
-            ))}
+            {CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide").map(t => {
+              const selectedIndex = cfSelectedForPasto.indexOf(t.name);
+              const isSelected = selectedIndex !== -1;
+              return (
+                <label key={t.name} style={{ position: "relative", display: "flex", alignItems: "center", gap: "5px", background: isSelected ? "var(--primary-light)" : "#f1f5f9", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", border: isSelected ? "1px solid var(--primary)" : "1px solid transparent" }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCfSelectedForPasto([...cfSelectedForPasto, t.name]);
+                      } else {
+                        setCfSelectedForPasto(cfSelectedForPasto.filter(cf => cf !== t.name));
+                      }
+                    }}
+                    style={{ display: "none" }}
+                  />
+                  {isSelected && (
+                    <div style={{ position: "absolute", top: -6, left: -6, background: "var(--primary)", color: "white", width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: "bold", zIndex: 10 }}>
+                      {selectedIndex + 1}
+                    </div>
+                  )}
+                  <span style={{ fontWeight: 600, color: isSelected ? "var(--primary-dark)" : "var(--text-main)" }}>{t.name}</span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>({t.capacity}L)</span>
+                </label>
+              );
+            })}
           </div>
           {cfSelectedForPasto.length === 0 && (
             <p style={{ color: "var(--danger)", fontSize: "0.85rem", marginTop: "-5px", marginBottom: "15px" }}>⚠️ Veuillez sélectionner au moins une cuve.</p>

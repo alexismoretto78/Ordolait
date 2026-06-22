@@ -41,6 +41,7 @@ export type ProductReference = {
   potsQty: number
   gramPerPot: number
   milkType?: MilkType
+  startDate?: string
 }
 
 export type Command = {
@@ -152,7 +153,7 @@ export const milkTypeConfigs: Record<string, any> = {
 }
 
 export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours" | "remplissage_en_cours"
-export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "a_laver" | "en_lavage"
+export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "a_valider_remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "a_laver" | "en_lavage"
 
 export type TlsExecution = {
   commandId?: string;
@@ -163,6 +164,8 @@ export type TlsExecution = {
   tlcDeductions?: { tlcKey: string, volume: number }[];
   consumedBatches?: { tlcKey: string, batchId: string, lotNumber: string, volume: number }[];
   pastoData?: { dornic: string | number, tempPasto: string | number, pression: string | number };
+  mpFinal?: number;
+  mgFinal?: number;
   times: {
     transferEnd?: string;
     osmoseStart?: string;
@@ -262,25 +265,17 @@ const initialCommand = (id: string, name: string, overrides?: Partial<Command>):
     cfSentStatus[name] = { atia: false, grunwald: false }
   })
 
-  const references: ProductReference[] = [
-    { id: "ref-1", name: "BAIKO", potsQty: 80000, gramPerPot: 105 },
-    { id: "ref-2", name: "MDD", potsQty: 40000, gramPerPot: 105 },
-  ]
+  const finalReferences = overrides?.references || references;
 
-  const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {
-    "ref-1": "both",
-    "ref-2": "both",
-  }
+  const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {}
+  const refSentStatus: { [refId: string]: { atia: boolean; grunwald: boolean } } = {}
+  const refPotsLaunched: { [refId: string]: { atia?: number; grunwald?: number } } = {}
 
-  const refSentStatus: { [refId: string]: { atia: boolean; grunwald: boolean } } = {
-    "ref-1": { atia: false, grunwald: false },
-    "ref-2": { atia: false, grunwald: false },
-  }
-
-  const refPotsLaunched: { [refId: string]: { atia?: number; grunwald?: number } } = {
-    "ref-1": {},
-    "ref-2": {},
-  }
+  finalReferences.forEach(r => {
+    refDestinations[r.id] = (r as any).destination || "both";
+    refSentStatus[r.id] = { atia: false, grunwald: false };
+    refPotsLaunched[r.id] = {};
+  })
 
   return {
     id,
@@ -288,7 +283,7 @@ const initialCommand = (id: string, name: string, overrides?: Partial<Command>):
     startDate: overrides?.startDate || new Date().toISOString().slice(0, 16),
     expectedEndDate: overrides?.expectedEndDate || "",
     calculatedEndDate: overrides?.calculatedEndDate || 0,
-    references: overrides?.references || references,
+    references: finalReferences,
     refDestinations,
     refSentStatus,
     refPotsLaunched,
@@ -388,7 +383,7 @@ const initialState: OrderState = {
     "TLS2": { status: "vide", currentVolume: 0, times: {} },
     "TLS3": { status: "vide", currentVolume: 0, times: {} },
   },
-  cfExecution: ["CF1", "CF2", "CF3", "CF4", "CF5", "CF10", "CF11", "CF12", "CF13", "CF14", "CF15", "CF20"].reduce((acc, name) => {
+  cfExecution: ["CF1", "CF2", "CF3", "CF4", "CF5", "CF11", "CF12", "CF13", "CF14", "CF15", "CF16", "CF17", "CF20"].reduce((acc, name) => {
     acc[name] = { status: "vide", currentVolume: 0, times: {} };
     return acc;
   }, {} as { [key: string]: CfExecution }),
@@ -900,7 +895,7 @@ type TLSToSchedule = {
 export const runMultiCommandSimulation = (
   commands: Command[],
   tlcBatchesInitial: { tlc1: Batch[]; tlc2: Batch[]; tlc3: Batch[]; tlc4: Batch[]; tankPermeat?: Batch[] },
-  config?: { needs48hWash: boolean; needsC3Wash: boolean; productionStartTime?: string }
+  config?: { needs48hWash: boolean; needsC3Wash: boolean; productionStartTime?: string; milkOrders?: MilkOrder[] }
 ): MultiCommandSimResults => {
   let timeTransferFree = 0
   let timeOsmosisFree = 0
@@ -1485,7 +1480,7 @@ export const runMultiCommandSimulation = (
             const changeStart = Math.max(t.readyTime, timeGrunwald)
             ganttTasks.push({
               key: `change-grun-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Changement format GRUN`,
+              label: `Changement format GRUN (${ref.name})`,
               startMinute: changeStart,
               durationMinutes: 30,
               color: "#64748b",
@@ -1511,7 +1506,7 @@ export const runMultiCommandSimulation = (
             const changeStart = Math.max(t.readyTime, timeAtia)
             ganttTasks.push({
               key: `change-atia-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Changement format ATIA`,
+              label: `Changement format ATIA (${ref.name})`,
               startMinute: changeStart,
               durationMinutes: 30,
               color: "#64748b",
@@ -1537,7 +1532,7 @@ export const runMultiCommandSimulation = (
             const changeStart = Math.max(t.readyTime, timeAtia)
             ganttTasks.push({
               key: `change-atia-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Changement format ATIA`,
+              label: `Changement format ATIA (${ref.name})`,
               startMinute: changeStart,
               durationMinutes: 30,
               color: "#64748b",
@@ -1550,7 +1545,7 @@ export const runMultiCommandSimulation = (
             const changeStart = Math.max(t.readyTime, timeGrunwald)
             ganttTasks.push({
               key: `change-grun-${cmd.id}-${ref.id}-${Math.random()}`,
-              label: `Changement format GRUN`,
+              label: `Changement format GRUN (${ref.name})`,
               startMinute: changeStart,
               durationMinutes: 30,
               color: "#64748b",
@@ -1786,6 +1781,28 @@ export const runMultiCommandSimulation = (
 
   let totalDurationMinutes = Math.max(endWashTimeLine1, endWashTimeLine2)
 
+  if (config?.milkOrders) {
+    config.milkOrders.forEach(order => {
+      if (order.status === "pending" && order.quantity > 0) {
+        const t = order.milkType;
+        let remainingToDeduct = order.quantity;
+        for (const [typeKey, shortage] of Object.entries(milkShortages)) {
+          if (remainingToDeduct <= 0) break;
+          if (shortage > 0 && typeKey.includes(t)) {
+            const deduction = Math.min(shortage, remainingToDeduct);
+            milkShortages[typeKey] -= deduction;
+            remainingToDeduct -= deduction;
+            
+            // Si le manque est totalement couvert, on le supprime pour qu'il n'apparaisse plus
+            if (milkShortages[typeKey] <= 0) {
+              delete milkShortages[typeKey];
+            }
+          }
+        }
+      }
+    });
+  }
+
   return {
     totalDurationMinutes,
     commandsResults,
@@ -1818,8 +1835,9 @@ const orderSlice = createSlice({
             name: r.refName,
             potsQty: r.potsQty,
             gramPerPot: r.gramPerPot,
-            milkType
-          }
+            milkType,
+            destination: (r as any).destination
+          } as any
         })
       })
       state.commands.push(newCmd)
@@ -1851,8 +1869,12 @@ const orderSlice = createSlice({
             else if (n.includes("val de praz") || n.includes("vdp")) milkType = "savoie"
             else if (n.includes("baiko") || n.includes("mdd") || n.includes("nature")) milkType = "montagne"
             else if (n.includes("bio")) milkType = "bio"
+            const newRefId = `ref-${Date.now()}-${i}`;
+            cmd.refDestinations[newRefId] = (r as any).destination || "both";
+            cmd.refSentStatus[newRefId] = { atia: false, grunwald: false };
+            cmd.refPotsLaunched[newRefId] = {};
             return {
-              id: `ref-${Date.now()}-${i}`,
+              id: newRefId,
               name: r.refName,
               potsQty: r.potsQty,
               gramPerPot: r.gramPerPot,
@@ -1965,13 +1987,15 @@ const orderSlice = createSlice({
         exec.times.osmoseStart = new Date().toISOString()
       }
     },
-    validateTlsOsmoseEnd(state, action: PayloadAction<{ tlsName: string, permeatVol: number, fcvApplied: number }>) {
-      const { tlsName, permeatVol, fcvApplied } = action.payload
+    validateTlsOsmoseEnd(state, action: PayloadAction<{ tlsName: string, permeatVol: number, fcvApplied: number, mpFinal: number, mgFinal: number }>) {
+      const { tlsName, permeatVol, fcvApplied, mpFinal, mgFinal } = action.payload
       const exec = state.tlsExecution[tlsName]
       if (exec) {
         exec.status = "attente_pasto"
         exec.permeatVolume = permeatVol
         exec.fcvApplied = fcvApplied
+        exec.mpFinal = mpFinal
+        exec.mgFinal = mgFinal
         exec.currentVolume = Math.max(0, exec.currentVolume - permeatVol)
         exec.times.osmoseEnd = new Date().toISOString()
       }
@@ -2012,11 +2036,8 @@ const orderSlice = createSlice({
           cmd.tlsExecutionsHistory.push({ tankName: action.payload.tlsName, exec: JSON.parse(JSON.stringify(exec)) });
         }
 
-        exec.status = "vide"
-        exec.currentVolume = 0
+        exec.status = "pasto_en_cours"
         exec.times.pastoStart = new Date().toISOString()
-        exec.times.pastoEnd = new Date().toISOString()
-        exec.commandId = undefined
       }
     },
     validateCfRemplissageStart(state, action: PayloadAction<{ cfName: string, pastoData: { dornic: number|string, tempPasto: number|string, pression: number|string } }>) {
@@ -2044,17 +2065,59 @@ const orderSlice = createSlice({
         }
         
         const cmd = state.commands.find(c => c.id === exec.commandId)
-        if (cmd && cmd.cfSequence && cmd.lastPastoData) {
+        if (cmd && cmd.cfSequence) {
           const currentIndex = cmd.cfSequence.indexOf(action.payload.cfName)
           if (currentIndex !== -1 && currentIndex + 1 < cmd.cfSequence.length) {
             const nextCfName = cmd.cfSequence[currentIndex + 1]
             const nextExec = state.cfExecution[nextCfName]
-            if (nextExec && nextExec.status === "attente_remplissage") {
+            if (nextExec && nextExec.status === "attente_remplissage" && cmd.lastPastoData) {
               nextExec.status = "remplissage"
               nextExec.dornic = cmd.lastPastoData.dornic
               nextExec.tempPasto = cmd.lastPastoData.tempPasto
               nextExec.pression = cmd.lastPastoData.pression
               nextExec.times.remplissageStart = new Date().toISOString()
+            }
+          } else if (currentIndex !== -1 && currentIndex + 1 === cmd.cfSequence.length) {
+            // It's the last CF, empty the TLS
+            for (const [tlsKey, tlsExec] of Object.entries(state.tlsExecution)) {
+              if (tlsExec.commandId === exec.commandId && tlsExec.status === "pasto_en_cours") {
+                tlsExec.status = "vide"
+                tlsExec.currentVolume = 0
+                tlsExec.times.pastoEnd = new Date().toISOString()
+                tlsExec.commandId = undefined
+              }
+            }
+          }
+        }
+      }
+    },
+    autoCompleteCfRemplissage(state, action: PayloadAction<{ cfName: string }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec && exec.status === "remplissage") {
+        exec.status = "a_valider_remplissage"
+        
+        const cmd = state.commands.find(c => c.id === exec.commandId)
+        if (cmd && cmd.cfSequence) {
+          const currentIndex = cmd.cfSequence.indexOf(action.payload.cfName)
+          if (currentIndex !== -1 && currentIndex + 1 < cmd.cfSequence.length) {
+            const nextCfName = cmd.cfSequence[currentIndex + 1]
+            const nextExec = state.cfExecution[nextCfName]
+            if (nextExec && nextExec.status === "attente_remplissage" && cmd.lastPastoData) {
+              nextExec.status = "remplissage"
+              nextExec.dornic = cmd.lastPastoData.dornic
+              nextExec.tempPasto = cmd.lastPastoData.tempPasto
+              nextExec.pression = cmd.lastPastoData.pression
+              nextExec.times.remplissageStart = new Date().toISOString()
+            }
+          } else if (currentIndex !== -1 && currentIndex + 1 === cmd.cfSequence.length) {
+            // It's the last CF, empty the TLS
+            for (const [tlsKey, tlsExec] of Object.entries(state.tlsExecution)) {
+              if (tlsExec.commandId === exec.commandId && tlsExec.status === "pasto_en_cours") {
+                tlsExec.status = "vide"
+                tlsExec.currentVolume = 0
+                tlsExec.times.pastoEnd = new Date().toISOString()
+                tlsExec.commandId = undefined
+              }
             }
           }
         }
@@ -2315,6 +2378,7 @@ const orderSlice = createSlice({
         id: `milk-order-${Date.now()}`,
         status: "pending"
       })
+      state.simulationDone = false
     },
     receiveMilkOrder(state, action: PayloadAction<{ orderId: string; tank: "tlc1" | "tlc2" | "tlc3" | "tlc4" | "tankPermeat"; batchData: Omit<Batch, "id" | "milkType">; isComplete: boolean }>) {
       const order = state.milkOrders.find(o => o.id === action.payload.orderId)
@@ -2628,7 +2692,8 @@ const orderSlice = createSlice({
       const results = runMultiCommandSimulation(state.commands, state.tlcBatches, {
         needs48hWash: state.needs48hWash,
         needsC3Wash: state.needsC3Wash,
-        productionStartTime: state.productionStartTime
+        productionStartTime: state.productionStartTime,
+        milkOrders: state.milkOrders
       })
       state.simulationResults = results
 
@@ -2664,7 +2729,9 @@ const orderSlice = createSlice({
 
       const results = runMultiCommandSimulation(state.commands, state.tlcBatches, {
         needs48hWash: state.needs48hWash,
-        needsC3Wash: state.needsC3Wash
+        needsC3Wash: state.needsC3Wash,
+        productionStartTime: state.productionStartTime,
+        milkOrders: state.milkOrders
       })
       state.simulationResults = results
 
@@ -2739,6 +2806,7 @@ export const {
   validateTlsPastoStart,
   validateCfRemplissageStart,
   validateCfRemplissageEnd,
+  autoCompleteCfRemplissage,
   initCfRemplissage,
   validateCfMaturationStart,
   validateCfMaturationEnd,

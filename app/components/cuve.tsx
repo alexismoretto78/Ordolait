@@ -17,26 +17,22 @@ export default function Cuve() {
 
   const volumeForCF = activeCommand.whiteMassKg
 
-  // Calcule le volume distribué à chaque cuve sélectionnée en permettant plusieurs remplissages
+  // Calcule le volume distribué à chaque cuve sélectionnée en respectant l'ordre de sélection
   const allocatedVolumes: { [key: string]: number } = {}
   let remainingVolumeToDistribute = volumeForCF
 
   CF_TANKS.forEach((t) => { allocatedVolumes[t.name] = 0 })
 
-  while (remainingVolumeToDistribute > 0) {
-    let allocatedInCycle = false
-    CF_TANKS.forEach((tank) => {
-      if (activeCommand.selectedCFs.includes(tank.name) && remainingVolumeToDistribute > 0) {
-        const take = Math.min(remainingVolumeToDistribute, tank.capacity)
-        if (take > 0) {
-          allocatedVolumes[tank.name] += take
-          remainingVolumeToDistribute = Math.max(0, remainingVolumeToDistribute - take)
-          allocatedInCycle = true
-        }
+  activeCommand.selectedCFs.forEach((tankName) => {
+    const tank = CF_TANKS.find(t => t.name === tankName)
+    if (tank && remainingVolumeToDistribute > 0) {
+      const take = Math.min(remainingVolumeToDistribute, tank.capacity)
+      if (take > 0) {
+        allocatedVolumes[tank.name] += take
+        remainingVolumeToDistribute -= take
       }
-    })
-    if (!allocatedInCycle) break
-  }
+    }
+  })
 
   const selectedCapacity = activeCommand.selectedCFs.reduce((total, name) => {
     return total + (allocatedVolumes[name] || 0)
@@ -61,7 +57,8 @@ export default function Cuve() {
               const isDisabled = 
                 !activeCommand.pasteurized ||
                 (isCF20 && !hasSkyr) ||
-                (!isCF20 && !hasClassic)
+                (!isCF20 && !hasClassic) ||
+                (!selected && remainingVolume > 0 && remainingVolume <= 2200 && tank.capacity < 2200)
 
               return (
                 <div
@@ -86,8 +83,14 @@ export default function Cuve() {
                       flexDirection: "column",
                       alignItems: "center",
                       gap: 4,
+                      position: "relative"
                     }}
                   >
+                    {selected && (
+                      <div style={{ position: "absolute", top: -8, left: -8, background: "var(--primary)", color: "white", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: "bold", zIndex: 10, boxShadow: "0 2px 4px rgba(0,0,0,0.2)" }}>
+                        {activeCommand.selectedCFs.indexOf(tank.name) + 1}
+                      </div>
+                    )}
                     <span className="cuve-title" style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       {tank.name}
                       {isCF20 && (

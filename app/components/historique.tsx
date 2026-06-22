@@ -41,6 +41,7 @@ export default function Historique() {
   const [view, setView] = useState<"commands" | "receptions">("commands");
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterDate, setFilterDate] = useState("");
   const [expandedCommandId, setExpandedCommandId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,16 +82,32 @@ export default function Historique() {
     });
   };
 
-  const filteredCommands = commands.filter(cmd => 
-    cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    cmd.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    cmd.milkType.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const getLocalDateString = (dateString: string) => {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const filteredCommands = commands.filter(cmd => {
+    const matchesSearch = cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      cmd.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      cmd.milkType.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    if (filterDate) {
+      return matchesSearch && getLocalDateString(cmd.completedAt) === filterDate;
+    }
+    return matchesSearch;
+  });
   
-  const filteredReceptions = receptions.filter(rec => 
-    rec.lotNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    rec.milkType.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredReceptions = receptions.filter(rec => {
+    const matchesSearch = rec.lotNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      rec.milkType.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    if (filterDate) {
+      return matchesSearch && getLocalDateString(rec.deliveryDate) === filterDate;
+    }
+    return matchesSearch;
+  });
 
   const toggleCommandDetails = (id: string) => {
     if (expandedCommandId === id) {
@@ -109,7 +126,43 @@ export default function Historique() {
           </h2>
           
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "1.2rem" }}>🔍</span>
+            <span style={{ fontSize: "1.2rem", title: "Filtrer par date" }}>📅</span>
+            <input 
+              type="date" 
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-color)",
+                outline: "none",
+                fontSize: "0.95rem",
+                cursor: "pointer",
+                color: "var(--text-color)"
+              }}
+            />
+            {filterDate && (
+              <button 
+                onClick={() => setFilterDate("")}
+                style={{
+                  padding: "8px",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  backgroundColor: "var(--bg-light)",
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "36px",
+                  width: "36px"
+                }}
+                title="Effacer la date"
+              >
+                ✖
+              </button>
+            )}
+            <span style={{ fontSize: "1.2rem", marginLeft: "10px" }}>🔍</span>
             <input 
               type="text" 
               placeholder="Rechercher..." 
@@ -129,7 +182,7 @@ export default function Historique() {
         
         <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
           <button
-            onClick={() => { setView("commands"); setSearchQuery(""); }}
+            onClick={() => { setView("commands"); setSearchQuery(""); setFilterDate(""); }}
             style={{
               flex: 1,
               padding: "10px",
@@ -145,7 +198,7 @@ export default function Historique() {
             Commandes Terminées ({commands.length})
           </button>
           <button
-            onClick={() => { setView("receptions"); setSearchQuery(""); }}
+            onClick={() => { setView("receptions"); setSearchQuery(""); setFilterDate(""); }}
             style={{
               flex: 1,
               padding: "10px",

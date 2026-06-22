@@ -127,10 +127,28 @@ export default function Journee() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", borderTop: "1px solid rgba(59, 130, 246, 0.2)", paddingTop: "16px" }}>
               {Object.entries(whiteMassBreakdown).map(([type, mass]) => (
                 <div key={type} style={{ background: "#fff", padding: "8px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--primary-border)", display: "flex", alignItems: "center", gap: "12px", boxShadow: "var(--shadow-sm)" }}>
-                  <span style={{ fontWeight: 600, color: "var(--text-main)" }}>{type}</span>
-                  <span style={{ fontWeight: 800, color: "var(--primary)", fontSize: "1.1rem" }}>{mass.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L</span>
+                  <span style={{ fontWeight: 600, color: "var(--text-main)" }}>Total {type}</span>
+                  <span style={{ fontWeight: 800, color: "var(--primary)", fontSize: "1.1rem" }}>{mass.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {commands.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderTop: "1px solid rgba(59, 130, 246, 0.2)", paddingTop: "16px" }}>
+              <h4 style={{ margin: "0 0 8px 0", color: "var(--primary-dark)" }}>Détail par commande :</h4>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "12px" }}>
+                {commands.map(cmd => {
+                  const remaining = Math.max(0, (cmd.whiteMassKg || 0) - (cmd.producedWhiteMass || 0))
+                  if (remaining <= 0) return null;
+                  return (
+                    <div key={cmd.id} style={{ display: "flex", justifyContent: "space-between", background: "#fff", padding: "10px 16px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-color)", boxShadow: "var(--shadow-sm)" }}>
+                      <span style={{ fontWeight: 600 }}>{cmd.name}</span>
+                      <span style={{ fontWeight: 800, color: "var(--primary-dark)" }}>{remaining.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} kg</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
