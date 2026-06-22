@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "^6.19.3",
     "@reduxjs/toolkit": "^2.12.0",
     "dotenv": "^17.4.2",
     "next": "^14.0.0",
@@ -21,7 +21,7 @@
     "react-redux": "^9.3.0"
   },
   "devDependencies": {
-    "@prisma/config": "^7.8.0",
+    "@prisma/config": "^6.19.3",
     "@rolldown/binding-win32-x64-msvc": "^1.0.3",
     "@types/node": "^20.19.41",
     "@types/pg": "^8.20.0",
@@ -29,7 +29,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.0.0",
-    "prisma": "^7.8.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.22.4",
     "typescript": "^5",
     "vitest": "^4.1.8"
@@ -40,5 +40,8 @@
       "@prisma/engines",
       "prisma"
     ]
+  },
+  "resolutions": {
+    "zeptomatch": "2.0.2"
   }
 }
