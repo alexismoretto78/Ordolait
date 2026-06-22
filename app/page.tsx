@@ -9,11 +9,12 @@ import Commande from "./components/commande"
 import Journee from "./components/journee"
 import Gantt from "./components/gantt"
 import Ordo from "./components/ordo"
+import Historique from "./components/historique"
 
 export default function Home() {
   const dispatch = useDispatch()
   const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
-  const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo">("tableau_de_bord")
+  const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo" | "historique">("tableau_de_bord")
 
   useEffect(() => {
     dispatch(completeSimulation())
@@ -25,7 +26,7 @@ export default function Home() {
     }
   }, [commands.length])
 
-  const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo") => {
+  const handleTabChange = (tab: "tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo" | "historique") => {
     setActiveTab(tab)
   }
 
@@ -207,6 +208,30 @@ export default function Home() {
         >
           <span>⏱️</span> Ordo
         </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("historique")}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            border: "none",
+            fontSize: "0.9rem",
+            fontWeight: activeTab === "historique" ? "700" : "500",
+            backgroundColor: activeTab === "historique" ? "var(--primary)" : "transparent",
+            color: activeTab === "historique" ? "#ffffff" : "var(--text-muted)",
+            cursor: "pointer",
+            transition: "var(--transition)",
+            boxShadow: activeTab === "historique" ? "var(--shadow-md)" : "none",
+          }}
+        >
+          <span>🗄️</span> Historique
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -246,6 +271,14 @@ export default function Home() {
         <div className="dashboard-grid">
           <section className="full-width-section">
             <Ordo />
+          </section>
+        </div>
+      )}
+
+      {activeTab === "historique" && (
+        <div className="dashboard-grid">
+          <section className="full-width-section">
+            <Historique />
           </section>
         </div>
       )}
