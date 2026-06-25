@@ -2032,7 +2032,6 @@ const orderSlice = createSlice({
         if (cmd) {
           cmd.cfSequence = sequence
           cmd.cfVolumes = cfVolumes
-          cmd.producedWhiteMass = (cmd.producedWhiteMass || 0) + exec.currentVolume
           if (!cmd.tlsExecutionsHistory) cmd.tlsExecutionsHistory = [];
           cmd.tlsExecutionsHistory.push({ tankName: action.payload.tlsName, exec: JSON.parse(JSON.stringify(exec)) });
         }
@@ -2080,11 +2079,16 @@ const orderSlice = createSlice({
       const exec = state.cfExecution[action.payload.cfName]
       if (exec) {
         exec.status = "attente_maturation"
-        if (action.payload.volume !== undefined) {
-          exec.currentVolume = action.payload.volume
-        }
         
         const cmd = state.commands.find(c => c.id === exec.commandId)
+
+        if (action.payload.volume !== undefined) {
+          exec.currentVolume = action.payload.volume
+          if (cmd) {
+            cmd.producedWhiteMass = (cmd.producedWhiteMass || 0) + action.payload.volume
+          }
+        }
+        
         if (cmd && cmd.cfSequence) {
           const currentIndex = cmd.cfSequence.indexOf(action.payload.cfName)
           if (currentIndex !== -1 && currentIndex + 1 < cmd.cfSequence.length) {
