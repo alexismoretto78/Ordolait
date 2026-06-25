@@ -401,7 +401,7 @@ export const getTLCStats = (batches: Batch[]) => {
 }
 
 export const TLS_TANKS = [
-  { name: "TLS1", capacity: 11000 },
+  { name: "TLS1", capacity: 11900 },
   { name: "TLS2", capacity: 5200 },
   { name: "TLS3", capacity: 5200 },
 ]
@@ -1125,7 +1125,7 @@ export const runMultiCommandSimulation = (
       const targetVal = 41
 
       let availableTanks = ["TLS1", "TLS2", "TLS3"].map(t => {
-        const capacity = t === "TLS1" ? 11000 : 5200;
+        const capacity = t === "TLS1" ? 11900 : 5200;
         // La capacité d'une TLS représente le volume de lait cru (reqRaw) qu'elle peut accueillir.
         // On calcule donc la masse blanche max (chunkMass) que cette TLS peut produire :
         const maxWhiteMass = capacity * (33.0 / targetVal);
@@ -2041,6 +2041,25 @@ const orderSlice = createSlice({
         exec.times.pastoStart = new Date().toISOString()
       }
     },
+    validateTlsLavageStart(state, action: PayloadAction<{ tlsName: string }>) {
+      const exec = state.tlsExecution[action.payload.tlsName]
+      if (exec) {
+        exec.status = "en_lavage"
+      }
+    },
+    validateTlsLavageEnd(state, action: PayloadAction<{ tlsName: string }>) {
+      const exec = state.tlsExecution[action.payload.tlsName]
+      if (exec) {
+        exec.status = "vide"
+        exec.commandId = undefined
+        exec.currentVolume = 0
+        exec.times = {}
+        exec.permeatVolume = undefined
+        exec.fcvApplied = undefined
+        exec.mpFinal = undefined
+        exec.mgFinal = undefined
+      }
+    },
     validateCfRemplissageStart(state, action: PayloadAction<{ cfName: string, pastoData: { dornic: number|string, tempPasto: number|string, pression: number|string } }>) {
       const { cfName, pastoData } = action.payload
       const exec = state.cfExecution[cfName]
@@ -2082,10 +2101,9 @@ const orderSlice = createSlice({
             // It's the last CF, empty the TLS
             for (const [tlsKey, tlsExec] of Object.entries(state.tlsExecution)) {
               if (tlsExec.commandId === exec.commandId && tlsExec.status === "pasto_en_cours") {
-                tlsExec.status = "vide"
+                tlsExec.status = "a_laver"
                 tlsExec.currentVolume = 0
                 tlsExec.times.pastoEnd = new Date().toISOString()
-                tlsExec.commandId = undefined
               }
             }
           }
@@ -2114,10 +2132,9 @@ const orderSlice = createSlice({
             // It's the last CF, empty the TLS
             for (const [tlsKey, tlsExec] of Object.entries(state.tlsExecution)) {
               if (tlsExec.commandId === exec.commandId && tlsExec.status === "pasto_en_cours") {
-                tlsExec.status = "vide"
+                tlsExec.status = "a_laver"
                 tlsExec.currentVolume = 0
                 tlsExec.times.pastoEnd = new Date().toISOString()
-                tlsExec.commandId = undefined
               }
             }
           }
@@ -2472,7 +2489,7 @@ const orderSlice = createSlice({
       const availableTanks = [
         { name: "TLS2", capacity: 5200 },
         { name: "TLS3", capacity: 5200 },
-        { name: "TLS1", capacity: 11000 },
+        { name: "TLS1", capacity: 11900 },
       ]
 
       let tankStates = {
@@ -2846,6 +2863,8 @@ export const {
   validateTlsOsmoseStart,
   validateTlsOsmoseEnd,
   validateTlsPastoStart,
+  validateTlsLavageStart,
+  validateTlsLavageEnd,
   validateCfRemplissageStart,
   validateCfRemplissageEnd,
   autoCompleteCfRemplissage,

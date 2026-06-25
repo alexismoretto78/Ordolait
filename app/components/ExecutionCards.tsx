@@ -3,11 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../lib/store';
-import { 
-  TLS_TANKS, CF_TANKS, TLC_TANKS, milkTypeConfigs, 
+import {
+  TLS_TANKS, CF_TANKS, TLC_TANKS, milkTypeConfigs,
   initTlsTransfer, validateTlsTransferEnd, validateTlsOsmoseStart, validateTlsOsmoseEnd, validateTlsPastoStart,
   initCfRemplissage, initDirectTlcPasto, validateCfMaturationStart, validateCfMaturationEnd, validateCfSoutirageStart, pauseCfSoutirage, validateCfSoutirageEnd, validateCfLavageStart, validateCfLavageEnd,
-  validateCfRemplissageStart, validateCfRemplissageEnd, autoCompleteCfRemplissage, selectCuvesForVolume
+  validateCfRemplissageStart, validateCfRemplissageEnd, autoCompleteCfRemplissage, selectCuvesForVolume, validateTlsLavageStart, validateTlsLavageEnd
 } from '../lib/orderSlice';
 
 function getTheoTime(startMin: number, prodStart: string, delayMinutes: number = 0) {
@@ -82,19 +82,18 @@ export function ExecutionCards() {
     }, 1000);
     return () => clearInterval(interval);
   }, [cfExecution, dispatch]);
-  
+
   // Modals
   const [showInitTls, setShowInitTls] = useState(false);
   const [showTransferEndTls, setShowTransferEndTls] = useState(false);
   const [showOsmoseEndTls, setShowOsmoseEndTls] = useState(false);
   const [showPastoStartTls, setShowPastoStartTls] = useState(false);
-  
+
   const [cfSelectedForPasto, setCfSelectedForPasto] = useState<string[]>([]);
-  const [cfVolumes, setCfVolumes] = useState<{ [cfName: string]: number }>({});
   const [pastoTemp, setPastoTemp] = useState<string>("89");
   const [pastoPression, setPastoPression] = useState<string>("200");
   const [pastoDornic, setPastoDornic] = useState<string>("");
-  
+
   const [showInitCf, setShowInitCf] = useState(false);
   const [cfActiveTank, setCfActiveTank] = useState<string | null>(null);
   const [showRemplissageEndCf, setShowRemplissageEndCf] = useState(false);
@@ -116,8 +115,8 @@ export function ExecutionCards() {
   // Form states
   const [selectedCmdId, setSelectedCmdId] = useState("");
   const [transferVol, setTransferVol] = useState(15000);
-  const [tlcDeductions, setTlcDeductions] = useState<{tlcKey: string, volume: number}[]>([{tlcKey: "tlc1", volume: 15000}]);
-  
+  const [tlcDeductions, setTlcDeductions] = useState<{ tlcKey: string, volume: number }[]>([{ tlcKey: "tlc1", volume: 15000 }]);
+
   const [permeatVol, setPermeatVol] = useState<number | string>("");
   const [fcvApplied, setFcvApplied] = useState<number | string>("");
   const [mpFinal, setMpFinal] = useState<number | string>("");
@@ -127,7 +126,7 @@ export function ExecutionCards() {
 
   const handleInitTls = (tlsName: string) => {
     setTlsActiveTank(tlsName);
-    
+
     // Sort commands to find priority (first by expectedEndDate, then startDate)
     const sortedCommands = [...commands].sort((a, b) => {
       const aEnd = a.expectedEndDate ? new Date(a.expectedEndDate).getTime() : Infinity;
@@ -148,10 +147,10 @@ export function ExecutionCards() {
 
     const initialCmdId = priorityCmd ? priorityCmd.id : "";
     setSelectedCmdId(initialCmdId);
-    
+
     const maxVol = tlsName === "TLS1" ? 11900 : 5200;
     let suggestedVol = maxVol;
-    
+
     let suggestedTlcKey = "tlc1";
     if (priorityCmd) {
       const targetV = priorityCmd.targetValue || 41;
@@ -159,12 +158,12 @@ export function ExecutionCards() {
       const totalRawNeeded = (priorityCmd.whiteMassKg * targetV) / recV;
       const alreadyTransferred = priorityCmd.executedRawMilk || 0;
       const remainingNeeded = Math.max(0, totalRawNeeded - alreadyTransferred);
-      
+
       suggestedVol = Math.round(Math.min(maxVol, remainingNeeded));
 
       const milkType = priorityCmd.milkType;
       let oldestDate = Infinity;
-      
+
       Object.entries(tlcBatches).forEach(([key, batches]) => {
         if (key === "tankPermeat") return;
         batches.forEach(b => {
@@ -174,13 +173,13 @@ export function ExecutionCards() {
           }
         });
       });
-      
+
       if (oldestDate === Infinity) {
         const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === milkType);
         if (tlc) suggestedTlcKey = tlc.key;
       }
     }
-    
+
     setTransferVol(suggestedVol);
     setTlcDeductions([{ tlcKey: suggestedTlcKey, volume: suggestedVol }]);
     setShowInitTls(true);
@@ -196,14 +195,14 @@ export function ExecutionCards() {
       const totalRawNeeded = (cmd.whiteMassKg * targetV) / recV;
       const alreadyTransferred = cmd.executedRawMilk || 0;
       const remainingNeeded = Math.max(0, totalRawNeeded - alreadyTransferred);
-      
+
       const suggestedVol = Math.round(Math.min(maxVol, remainingNeeded));
       setTransferVol(suggestedVol);
 
       let suggestedTlcKey = "tlc1";
       const milkType = cmd.milkType;
       let oldestDate = Infinity;
-      
+
       Object.entries(tlcBatches).forEach(([key, batches]) => {
         if (key === "tankPermeat") return;
         batches.forEach(b => {
@@ -213,12 +212,12 @@ export function ExecutionCards() {
           }
         });
       });
-      
+
       if (oldestDate === Infinity) {
         const tlc = TLC_TANKS.find(t => tlcMilkTypes[t.key as keyof typeof tlcMilkTypes] === milkType);
         if (tlc) suggestedTlcKey = tlc.key;
       }
-      
+
       setTlcDeductions([{ tlcKey: suggestedTlcKey, volume: suggestedVol }]);
     }
   }
@@ -255,9 +254,9 @@ export function ExecutionCards() {
 
   const submitOsmoseEnd = () => {
     if (tlsActiveTank) {
-      dispatch(validateTlsOsmoseEnd({ 
-        tlsName: tlsActiveTank, 
-        permeatVol: Number(permeatVol) || 0, 
+      dispatch(validateTlsOsmoseEnd({
+        tlsName: tlsActiveTank,
+        permeatVol: Number(permeatVol) || 0,
         fcvApplied: Number(fcvApplied) || 0,
         mpFinal: Number(mpFinal) || 0,
         mgFinal: Number(mgFinal) || 0
@@ -271,7 +270,7 @@ export function ExecutionCards() {
     const exec = tlsExecution[tlsName];
     if (exec) {
       const cmd = commands.find(c => c.id === exec.commandId);
-      const availableCFs = CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide");
+      const availableCFs = CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide" && (cmd?.isSkyr || t.name !== "CF20"));
       const preselected = selectCuvesForVolume(exec.currentVolume, cmd?.milkType || "", cmd?.isSkyr, availableCFs);
       setCfSelectedForPasto(preselected);
     } else {
@@ -294,7 +293,7 @@ export function ExecutionCards() {
   const handleInitCf = (cfName: string) => {
     setCfActiveTank(cfName);
     const exec = cfExecution?.[cfName];
-    
+
     if (exec?.status === "attente_remplissage") {
       setSelectedCmdId(exec.commandId || "");
       const cmd = commands.find(c => c.id === exec.commandId);
@@ -310,7 +309,7 @@ export function ExecutionCards() {
     } else {
       const initialCmdId = commands.length > 0 ? commands[0].id : "";
       setSelectedCmdId(initialCmdId);
-      
+
       const runningTls = Object.values(tlsExecution).find((t: any) => t.commandId === initialCmdId && t.pastoData);
       if (runningTls && (runningTls as any).pastoData) {
         const pData = (runningTls as any).pastoData;
@@ -330,17 +329,17 @@ export function ExecutionCards() {
     if (cfActiveTank && selectedCmdId) {
       const exec = cfExecution?.[cfActiveTank];
       if (exec?.status === "attente_remplissage") {
-        dispatch(validateCfRemplissageStart({ 
-          cfName: cfActiveTank, 
-          pastoData: { dornic: initCfDornic, pression: initCfPression, tempPasto: initCfTempPasto } 
+        dispatch(validateCfRemplissageStart({
+          cfName: cfActiveTank,
+          pastoData: { dornic: initCfDornic, pression: initCfPression, tempPasto: initCfTempPasto }
         }));
       } else {
-        dispatch(initCfRemplissage({ 
-          cfName: cfActiveTank, 
-          commandId: selectedCmdId, 
-          dornic: initCfDornic, 
-          pression: initCfPression, 
-          tempPasto: initCfTempPasto 
+        dispatch(initCfRemplissage({
+          cfName: cfActiveTank,
+          commandId: selectedCmdId,
+          dornic: initCfDornic,
+          pression: initCfPression,
+          tempPasto: initCfTempPasto
         }));
       }
     }
@@ -408,7 +407,7 @@ export function ExecutionCards() {
     const machine = exec?.machine;
     const speed = machine === "atia" ? 3500 : (machine === "grunwald" ? 10000 : 0);
     let estimatedVol = exec?.currentVolume || 0;
-    
+
     if (exec?.times?.soutirageStart && speed > 0) {
       const elapsedMinutes = (Date.now() - new Date(exec.times.soutirageStart).getTime()) / 60000;
       const gramPerPot = cmd?.references?.[0]?.gramPerPot || 105;
@@ -416,7 +415,7 @@ export function ExecutionCards() {
       const drained = elapsedMinutes * litersPerMinute;
       estimatedVol = Math.max(0, estimatedVol - drained);
     }
-    
+
     setRemainingVolume(Math.round(estimatedVol));
     setShowPauseSoutirage(true);
   }
@@ -524,36 +523,38 @@ export function ExecutionCards() {
                   )}
                 </div>
 
-              {cmd && (
-                <div style={{ background: "var(--bg-app)", padding: "8px", borderRadius: "6px", fontSize: "0.9rem" }}>
-                  <strong>Commande:</strong> {cmd.name} <br/>
-                  {config && <span>{config.emoji} {config.label || cmd.milkType}</span>}
+                {cmd && (
+                  <div style={{ background: "var(--bg-app)", padding: "8px", borderRadius: "6px", fontSize: "0.9rem" }}>
+                    <strong>Commande:</strong> {cmd.name} <br />
+                    {config && <span>{config.emoji} {config.label || cmd.milkType}</span>}
+                  </div>
+                )}
+
+                {exec.status !== "vide" && simCmd && (
+                  <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
+                    {renderTime("Début Transfert", getTheoTime(simCmd.transferStart, productionStartTime, delayMinutes), formatRealTime((exec.times as any).transferStart))}
+                    {renderTime("Fin Transfert", getTheoTime(simCmd.transferEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.transferEnd))}
+                    {renderTime("Début Osmose", getTheoTime(simCmd.osmoseStart, productionStartTime, delayMinutes), formatRealTime(exec.times.osmoseStart))}
+                    {renderTime("Fin Osmose", getTheoTime(simCmd.osmoseEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.osmoseEnd))}
+                    {renderTime("Début Pasto", getTheoTime(simCmd.pastoStart, productionStartTime, delayMinutes), formatRealTime(exec.times.pastoStart))}
+                    {renderTime("Fin Pasto", getTheoTime(simCmd.pastoEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.pastoEnd))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: "0.95rem", textAlign: "right", color: "var(--text-main)", fontWeight: 600 }}>
+                  {(exec.currentVolume || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
+                  {(exec.mpFinal || exec.mgFinal) ? <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>MP: {exec.mpFinal || "-"} | MG: {exec.mgFinal || "-"}</div> : null}
                 </div>
-              )}
 
-              {exec.status !== "vide" && simCmd && (
-                <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
-                  {renderTime("Début Transfert", getTheoTime(simCmd.transferStart, productionStartTime, delayMinutes), formatRealTime((exec.times as any).transferStart))}
-                  {renderTime("Fin Transfert", getTheoTime(simCmd.transferEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.transferEnd))}
-                  {renderTime("Début Osmose", getTheoTime(simCmd.osmoseStart, productionStartTime, delayMinutes), formatRealTime(exec.times.osmoseStart))}
-                  {renderTime("Fin Osmose", getTheoTime(simCmd.osmoseEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.osmoseEnd))}
-                  {renderTime("Début Pasto", getTheoTime(simCmd.pastoStart, productionStartTime, delayMinutes), formatRealTime(exec.times.pastoStart))}
-                  {renderTime("Fin Pasto", getTheoTime(simCmd.pastoEnd, productionStartTime, delayMinutes), formatRealTime(exec.times.pastoEnd))}
+                <div style={{ marginTop: "auto", paddingTop: "8px" }}>
+                  {exec.status === "vide" && <button onClick={() => handleInitTls(tank.name)} className="btn btn-secondary" style={{ width: "100%" }}>Démarrer Transfert</button>}
+                  {exec.status === "transfert_en_cours" && <button onClick={() => handleTransferEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Transfert</button>}
+                  {exec.status === "attente_osmose" && <button onClick={() => dispatch(validateTlsOsmoseStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Osmose</button>}
+                  {exec.status === "osmose_en_cours" && <button onClick={() => handleOsmoseEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Osmose</button>}
+                  {exec.status === "attente_pasto" && <button onClick={() => handlePastoStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Pasto</button>}
+                  {exec.status === "a_laver" && <button onClick={() => dispatch(validateTlsLavageStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Laver</button>}
+                  {exec.status === "en_lavage" && <button onClick={() => dispatch(validateTlsLavageEnd({ tlsName: tank.name }))} className="btn btn-success" style={{ width: "100%" }}>Fin de lavage (Propre)</button>}
                 </div>
-              )}
-
-              <div style={{ fontSize: "0.95rem", textAlign: "right", color: "var(--text-main)", fontWeight: 600 }}>
-                {(exec.currentVolume || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
-                {(exec.mpFinal || exec.mgFinal) ? <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>MP: {exec.mpFinal || "-"} | MG: {exec.mgFinal || "-"}</div> : null}
-              </div>
-
-              <div style={{ marginTop: "auto", paddingTop: "8px" }}>
-                {exec.status === "vide" && <button onClick={() => handleInitTls(tank.name)} className="btn btn-secondary" style={{ width: "100%" }}>Démarrer Transfert</button>}
-                {exec.status === "transfert_en_cours" && <button onClick={() => handleTransferEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Transfert</button>}
-                {exec.status === "attente_osmose" && <button onClick={() => dispatch(validateTlsOsmoseStart({ tlsName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Osmose</button>}
-                {exec.status === "osmose_en_cours" && <button onClick={() => handleOsmoseEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Osmose</button>}
-                {exec.status === "attente_pasto" && <button onClick={() => handlePastoStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Pasto</button>}
-              </div>
               </div>
             </div>
           )
@@ -593,8 +594,8 @@ export function ExecutionCards() {
           if (["maturation_en_cours", "attente_soutirage"].includes(exec.status) && exec.times.maturationStart) {
             const elapsed = Date.now() - new Date(exec.times.maturationStart).getTime();
             if (elapsed > 24 * 3600 * 1000) {
-               isReport = true;
-               cardClass += " cf-card-report";
+              isReport = true;
+              cardClass += " cf-card-report";
             }
           }
 
@@ -633,65 +634,65 @@ export function ExecutionCards() {
                       {exec.machine}
                     </span>
                   )}
-                {exec.status !== "vide" ? (
-                  <span style={{ fontSize: "0.85rem", background: getStatusColor(exec.status), color: "white", padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>
-                    {exec.status.replace(/_/g, " ").toUpperCase()}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Vide</span>
-                )}
-              </div>
-
-              {cmd && (
-                <div style={{ background: "var(--bg-app)", padding: "8px", borderRadius: "6px", fontSize: "0.9rem" }}>
-                  <strong>Commande:</strong> {cmd.name}
+                  {exec.status !== "vide" ? (
+                    <span style={{ fontSize: "0.85rem", background: getStatusColor(exec.status), color: "white", padding: "4px 8px", borderRadius: "6px", fontWeight: 600 }}>
+                      {exec.status.replace(/_/g, " ").toUpperCase()}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>Vide</span>
+                  )}
                 </div>
-              )}
 
-              {exec.status !== "vide" && simCmd && (
-                <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
-                  {renderTime("Début Remplissage", getTheoTime(simCmd.pastoEnd || 0, productionStartTime, delayMinutes), formatRealTime((exec.times as any).remplissageStart))}
-                  {renderTime("Début Maturation", getTheoTime(simCmd.maturationStart || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.maturationStart))}
-                  {renderTime("Fin Maturation", getTheoTime(simCmd.maturationEnd || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.maturationEnd))}
-                  {renderTime("Soutirage", getTheoTime(simCmd.maturationEnd || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.soutirageStart))}
+                {cmd && (
+                  <div style={{ background: "var(--bg-app)", padding: "8px", borderRadius: "6px", fontSize: "0.9rem" }}>
+                    <strong>Commande:</strong> {cmd.name}
+                  </div>
+                )}
+
+                {exec.status !== "vide" && simCmd && (
+                  <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px" }}>
+                    {renderTime("Début Remplissage", getTheoTime(simCmd.pastoEnd || 0, productionStartTime, delayMinutes), formatRealTime((exec.times as any).remplissageStart))}
+                    {renderTime("Début Maturation", getTheoTime(simCmd.maturationStart || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.maturationStart))}
+                    {renderTime("Fin Maturation", getTheoTime(simCmd.maturationEnd || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.maturationEnd))}
+                    {renderTime("Soutirage", getTheoTime(simCmd.maturationEnd || 0, productionStartTime, delayMinutes), formatRealTime(exec.times.soutirageStart))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: "1.1rem", textAlign: "right", color: getMilkColor(cmd?.milkType), fontWeight: 700 }}>
+                  {(exec.currentVolume || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
                 </div>
-              )}
 
-              <div style={{ fontSize: "1.1rem", textAlign: "right", color: getMilkColor(cmd?.milkType), fontWeight: 700 }}>
-                {(exec.currentVolume || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} L
-              </div>
-
-              <div style={{ marginTop: "auto", paddingTop: "8px" }}>
-                {exec.status === "remplissage" && (
-                  <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px", marginBottom: "8px", border: "1px solid var(--border-color)", fontSize: "0.85rem" }}>
-                    <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Dornic :</span> <strong>{exec.dornic || "-"} °D</strong></div>
-                    <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>T° Pasto :</span> <strong>{exec.tempPasto || "-"} °C</strong></div>
-                    <div><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Pression :</span> <strong>{exec.pression || "-"} bars</strong></div>
-                  </div>
-                )}
-                {exec.status === "attente_remplissage" && <button disabled={isAnyRemplissage} onClick={() => handleInitCf(tank.name)} className="btn btn-primary" style={{ width: "100%", opacity: isAnyRemplissage ? 0.5 : 1, cursor: isAnyRemplissage ? "not-allowed" : "pointer" }}>{isAnyRemplissage ? "Pasto occupée" : "Début Remplissage"}</button>}
-                {(exec.status === "remplissage" || exec.status === "a_valider_remplissage") && <button onClick={() => handleRemplissageEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Fin Remplissage</button>}
-                {exec.status === "attente_maturation" && <button onClick={() => handleMaturationStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Maturation</button>}
-                {exec.status === "maturation_en_cours" && <button onClick={() => handleMaturationEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Maturation</button>}
-                {exec.status === "attente_soutirage" && <button disabled={!canSoutirer} onClick={() => handleSoutirageStart(tank.name)} className="btn btn-primary" style={{ width: "100%", opacity: canSoutirer ? 1 : 0.5, cursor: canSoutirer ? "pointer" : "not-allowed" }}>{canSoutirer ? "Valider Soutirage" : "Machines Occupées"}</button>}
-                {exec.status === "soutirage_en_cours" && (
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => handlePauseSoutirage(tank.name)} className="btn btn-secondary" style={{ flex: 1 }}>Pause</button>
-                    <button onClick={() => dispatch(validateCfSoutirageEnd({ cfName: tank.name }))} className="btn btn-primary" style={{ flex: 1 }}>Fin Soutirage</button>
-                  </div>
-                )}
-                {exec.status === "soutirage_en_pause" && (
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button disabled={!canSoutirer} onClick={() => handleSoutirageStart(tank.name)} className="btn btn-primary" style={{ flex: 1, opacity: canSoutirer ? 1 : 0.5, cursor: canSoutirer ? "pointer" : "not-allowed" }}>{canSoutirer ? "Reprendre" : "Occupées"}</button>
-                    <button onClick={() => dispatch(validateCfSoutirageEnd({ cfName: tank.name }))} className="btn btn-primary" style={{ flex: 1 }}>Fin Soutirage</button>
-                  </div>
-                )}
-                {exec.status === "a_laver" && <button onClick={() => dispatch(validateCfLavageStart({ cfName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Laver</button>}
-                {exec.status === "en_lavage" && <button onClick={() => dispatch(validateCfLavageEnd({ cfName: tank.name }))} className="btn btn-success" style={{ width: "100%" }}>Fin de lavage (Propre & Vide)</button>}
-                {exec.status === "vide" && tank.name === "CF20" && commands.some(c => ["fcv3", "ecreme_savoie", "ecreme_montagne"].includes(c.milkType) || c.isSkyr) && (
-                  <button onClick={() => handleDirectPasto(tank.name)} className="btn btn-secondary" style={{ width: "100%", marginTop: "8px" }}>Pasto depuis TLC (FCV3/Écrémé)</button>
-                )}
-              </div>
+                <div style={{ marginTop: "auto", paddingTop: "8px" }}>
+                  {exec.status === "remplissage" && (
+                    <div style={{ background: "#f8fafc", padding: "8px", borderRadius: "6px", marginBottom: "8px", border: "1px solid var(--border-color)", fontSize: "0.85rem" }}>
+                      <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Dornic :</span> <strong>{exec.dornic || "-"} °D</strong></div>
+                      <div style={{ marginBottom: 4 }}><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>T° Pasto :</span> <strong>{exec.tempPasto || "-"} °C</strong></div>
+                      <div><span style={{ color: "var(--text-muted)", width: "80px", display: "inline-block" }}>Pression :</span> <strong>{exec.pression || "-"} bars</strong></div>
+                    </div>
+                  )}
+                  {exec.status === "attente_remplissage" && <button disabled={isAnyRemplissage} onClick={() => handleInitCf(tank.name)} className="btn btn-primary" style={{ width: "100%", opacity: isAnyRemplissage ? 0.5 : 1, cursor: isAnyRemplissage ? "not-allowed" : "pointer" }}>{isAnyRemplissage ? "Pasto occupée" : "Début Remplissage"}</button>}
+                  {(exec.status === "remplissage" || exec.status === "a_valider_remplissage") && <button onClick={() => handleRemplissageEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Fin Remplissage</button>}
+                  {exec.status === "attente_maturation" && <button onClick={() => handleMaturationStart(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Début Maturation</button>}
+                  {exec.status === "maturation_en_cours" && <button onClick={() => handleMaturationEnd(tank.name)} className="btn btn-primary" style={{ width: "100%" }}>Valider Fin Maturation</button>}
+                  {exec.status === "attente_soutirage" && <button disabled={!canSoutirer} onClick={() => handleSoutirageStart(tank.name)} className="btn btn-primary" style={{ width: "100%", opacity: canSoutirer ? 1 : 0.5, cursor: canSoutirer ? "pointer" : "not-allowed" }}>{canSoutirer ? "Valider Soutirage" : "Machines Occupées"}</button>}
+                  {exec.status === "soutirage_en_cours" && (
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={() => handlePauseSoutirage(tank.name)} className="btn btn-secondary" style={{ flex: 1 }}>Pause</button>
+                      <button onClick={() => dispatch(validateCfSoutirageEnd({ cfName: tank.name }))} className="btn btn-primary" style={{ flex: 1 }}>Fin Soutirage</button>
+                    </div>
+                  )}
+                  {exec.status === "soutirage_en_pause" && (
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button disabled={!canSoutirer} onClick={() => handleSoutirageStart(tank.name)} className="btn btn-primary" style={{ flex: 1, opacity: canSoutirer ? 1 : 0.5, cursor: canSoutirer ? "pointer" : "not-allowed" }}>{canSoutirer ? "Reprendre" : "Occupées"}</button>
+                      <button onClick={() => dispatch(validateCfSoutirageEnd({ cfName: tank.name }))} className="btn btn-primary" style={{ flex: 1 }}>Fin Soutirage</button>
+                    </div>
+                  )}
+                  {exec.status === "a_laver" && <button onClick={() => dispatch(validateCfLavageStart({ cfName: tank.name }))} className="btn btn-primary" style={{ width: "100%" }}>Laver</button>}
+                  {exec.status === "en_lavage" && <button onClick={() => dispatch(validateCfLavageEnd({ cfName: tank.name }))} className="btn btn-success" style={{ width: "100%" }}>Fin de lavage (Propre & Vide)</button>}
+                  {exec.status === "vide" && tank.name === "CF20" && commands.some(c => ["fcv3", "ecreme_savoie", "ecreme_montagne"].includes(c.milkType) || c.isSkyr) && (
+                    <button onClick={() => handleDirectPasto(tank.name)} className="btn btn-secondary" style={{ width: "100%", marginTop: "8px" }}>Pasto depuis TLC (FCV3/Écrémé)</button>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -707,7 +708,7 @@ export function ExecutionCards() {
               {commands.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          
+
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Volume Transféré Prévu (L):</label>
             <input type="number" value={transferVol} onChange={e => {
@@ -733,7 +734,7 @@ export function ExecutionCards() {
               <button onClick={() => setTlcDeductions(tlcDeductions.filter((_, i) => i !== index))} className="btn btn-secondary">X</button>
             </div>
           ))}
-          <button onClick={() => setTlcDeductions([...tlcDeductions, {tlcKey: "tlc1", volume: 0}])} className="btn btn-secondary" style={{ marginTop: "5px" }}>+ Ajouter un TLC</button>
+          <button onClick={() => setTlcDeductions([...tlcDeductions, { tlcKey: "tlc1", volume: 0 }])} className="btn btn-secondary" style={{ marginTop: "5px" }}>+ Ajouter un TLC</button>
         </BaseModal>
       )}
 
@@ -773,14 +774,28 @@ export function ExecutionCards() {
           <p style={{ fontSize: "0.95rem", color: "var(--text-main)", marginBottom: "15px" }}>
             Sélectionnez les cuves de fermentation pour la réception de la masse blanche :
           </p>
+          <div style={{ marginBottom: "15px", padding: "10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+              <span>Volume TLS disponible:</span>
+              <strong>{(tlsExecution?.[tlsActiveTank || ""]?.currentVolume || 0).toLocaleString()} L</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+              <span>Capacité sélectionnée:</span>
+              <strong>{cfSelectedForPasto.reduce((sum, cfName) => sum + (CF_TANKS.find(t => t.name === cfName)?.capacity || 0), 0).toLocaleString()} L</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: Math.max(0, (tlsExecution?.[tlsActiveTank || ""]?.currentVolume || 0) - cfSelectedForPasto.reduce((sum, cfName) => sum + (CF_TANKS.find(t => t.name === cfName)?.capacity || 0), 0)) > 0 ? "var(--primary)" : "var(--success)" }}>
+              <span>Reste à allouer:</span>
+              <strong>{Math.max(0, (tlsExecution?.[tlsActiveTank || ""]?.currentVolume || 0) - cfSelectedForPasto.reduce((sum, cfName) => sum + (CF_TANKS.find(t => t.name === cfName)?.capacity || 0), 0)).toLocaleString()} L</strong>
+            </div>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "15px" }}>
-            {CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide").map(t => {
+            {CF_TANKS.filter(t => cfExecution[t.name]?.status === "vide" && (commands.find(c => c.id === tlsExecution[tlsActiveTank || ""]?.commandId)?.isSkyr || t.name !== "CF20")).map(t => {
               const selectedIndex = cfSelectedForPasto.indexOf(t.name);
               const isSelected = selectedIndex !== -1;
               return (
                 <label key={t.name} style={{ position: "relative", display: "flex", alignItems: "center", gap: "5px", background: isSelected ? "var(--primary-light)" : "#f1f5f9", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", border: isSelected ? "1px solid var(--primary)" : "1px solid transparent" }}>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={isSelected}
                     onChange={(e) => {
                       if (e.target.checked) {
@@ -890,7 +905,7 @@ export function ExecutionCards() {
               {commands.filter(c => ["fcv3", "ecreme_savoie", "ecreme_montagne"].includes(c.milkType) || c.isSkyr).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          
+
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Source (TLC):</label>
             <select value={directPastoTlcKey} onChange={e => setDirectPastoTlcKey(e.target.value)} style={{ width: "100%", padding: "8px" }}>
