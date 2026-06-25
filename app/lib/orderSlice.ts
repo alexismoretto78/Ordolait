@@ -152,7 +152,7 @@ export const milkTypeConfigs: Record<string, any> = {
   ecreme_montagne: { label: "Écrémé Montagne", color: "var(--violet)", gradient: "linear-gradient(180deg, #ddd6fe 0%, #8b5cf6 100%)", emoji: "💧" }
 }
 
-export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours" | "remplissage_en_cours"
+export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours" | "remplissage_en_cours" | "a_laver" | "en_lavage"
 export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "a_valider_remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "soutirage_en_pause" | "a_laver" | "en_lavage"
 
 export type TlsExecution = {
