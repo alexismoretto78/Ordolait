@@ -7,6 +7,7 @@ import { toggleNeeds48hWash, toggleNeedsC3Wash, setProductionStartTime } from ".
 
 export default function Gantt() {
   const [mounted, setMounted] = useState(false)
+  const [viewMode, setViewMode] = useState<"vertical" | "horizontal">("horizontal")
 
   useEffect(() => {
     setMounted(true)
@@ -90,6 +91,14 @@ export default function Gantt() {
               style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid var(--border-color)", fontSize: "0.85rem" }}
             />
           </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 600, borderLeft: "1px solid var(--border-color)", paddingLeft: 16 }}>
+            <span>Vue :</span>
+            <select value={viewMode} onChange={e => setViewMode(e.target.value as "vertical" | "horizontal")} style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid var(--border-color)", fontSize: "0.85rem" }}>
+              <option value="horizontal">Horizontale (Lignes)</option>
+              <option value="vertical">Verticale (Colonnes)</option>
+            </select>
+          </div>
         </div>
 
         {totalReceivedVolume <= 0 && (
@@ -106,7 +115,8 @@ export default function Gantt() {
       ) : (
         <>
           <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", overflowX: "auto", border: "1px solid var(--border-color)", borderRadius: 8, backgroundColor: "white", maxHeight: "75vh" }}>
+            {viewMode === "vertical" ? (
+              <div style={{ display: "flex", overflowX: "auto", border: "1px solid var(--border-color)", borderRadius: 8, backgroundColor: "white", maxHeight: "75vh" }}>
 
                 {/* Timeline Axis (Y-axis) */}
                 <div style={{ position: "sticky", left: 0, zIndex: 10, backgroundColor: "#f8fafc", width: 80, flexShrink: 0, borderRight: "2px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
@@ -194,6 +204,102 @@ export default function Gantt() {
                 </div>
 
               </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", overflowX: "auto", overflowY: "auto", border: "1px solid var(--border-color)", borderRadius: 8, backgroundColor: "white", maxHeight: "75vh" }}>
+                
+                {/* Timeline Axis (X-axis) */}
+                <div style={{ position: "sticky", top: 0, zIndex: 10, backgroundColor: "#f8fafc", display: "flex", borderBottom: "2px solid var(--border-color)", width: `calc(150px + ${Math.max(totalDuration * 2, 600)}px)` }}>
+                  <div style={{ width: 150, minWidth: 150, borderRight: "1px solid var(--border-color)", position: "sticky", left: 0, backgroundColor: "#f8fafc", zIndex: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: "bold", color: "var(--text-muted)", textAlign: "center" }}>
+                    Équipements
+                  </div>
+                  <div style={{ position: "relative", width: `${Math.max(totalDuration * 2, 600)}px`, height: 60 }}>
+                    {Array.from({ length: Math.ceil(totalDuration / 60) + 1 }).map((_, i) => (
+                      <div key={i} style={{ position: "absolute", left: `${i * 60 * 2}px`, height: "100%", borderLeft: "1px solid rgba(0,0,0,0.1)", textAlign: "center", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600, transform: "translateX(-50%)", padding: "4px 0", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>{getAbsoluteTime(i * 60, true).split(" ").slice(0, 2).join(" ")}</span>
+                        <span>{getAbsoluteTime(i * 60, false)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tasks Rows */}
+                <div style={{ display: "flex", flexDirection: "column", width: `calc(150px + ${Math.max(totalDuration * 2, 600)}px)` }}>
+                  {tasks.map((task) => {
+                    let lanes: any[][] = [];
+                    if (task.segments) {
+                      const sorted = [...task.segments].sort((a, b) => a.startMinute - b.startMinute);
+                      sorted.forEach(seg => {
+                        let placed = false;
+                        for (let i = 0; i < lanes.length; i++) {
+                          const lane = lanes[i];
+                          const lastSeg = lane[lane.length - 1];
+                          if (lastSeg.startMinute + lastSeg.durationMinutes <= seg.startMinute) {
+                            lane.push(seg);
+                            placed = true;
+                            break;
+                          }
+                        }
+                        if (!placed) {
+                          lanes.push([seg]);
+                        }
+                      });
+                    } else {
+                      lanes.push([task]);
+                    }
+
+                    const rowHeight = Math.max(60, lanes.length * 30 + 16);
+
+                    return (
+                      <div key={task.key} style={{ display: "flex", borderBottom: "1px solid var(--border-color)" }}>
+                        <div style={{ width: 150, minWidth: 150, padding: 8, fontWeight: 600, fontSize: "0.85rem", textAlign: "center", borderRight: "1px solid var(--border-color)", position: "sticky", left: 0, backgroundColor: "white", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {task.label}
+                        </div>
+                        <div style={{ position: "relative", width: `${Math.max(totalDuration * 2, 600)}px`, height: `${rowHeight}px`, backgroundColor: "rgba(0,0,0,0.015)" }}>
+                          {lanes.map((lane, laneIdx) =>
+                            lane.map((seg: any, sIdx: number) => {
+                              const displayText = seg.shortLabel || (seg.label ? seg.label.split("Lavage ")[1] || seg.label : "");
+                              return (
+                                <div
+                                  key={`${laneIdx}-${sIdx}`}
+                                  style={{
+                                    position: "absolute",
+                                    left: `${seg.startMinute * 2}px`,
+                                    width: `${seg.durationMinutes * 2}px`,
+                                    top: `${8 + laneIdx * 30}px`,
+                                    height: `24px`,
+                                    backgroundColor: seg.color || task.color,
+                                    fontSize: "0.75rem",
+                                    border: "1px solid rgba(0,0,0,0.15)",
+                                    borderRadius: 4,
+                                    padding: "0 4px",
+                                    overflow: "hidden",
+                                    color: "#0f172a",
+                                    fontWeight: 500,
+                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    whiteSpace: "nowrap",
+                                    textOverflow: "ellipsis"
+                                  }}
+                                  title={`${seg.label || task.label}\nDe ${getAbsoluteTime(seg.startMinute, true)} à ${getAbsoluteTime(seg.startMinute + seg.durationMinutes, true)}\nDurée: ${formatTime(seg.durationMinutes)}\n${seg.details || task.details || ""}`.trim()}
+                                >
+                                  {displayText}
+                                </div>
+                              );
+                            })
+                          )}
+                          {/* Vertical guide lines */}
+                          {Array.from({ length: Math.ceil(totalDuration / 60) + 1 }).map((_, i) => (
+                            <div key={i} style={{ position: "absolute", left: `${i * 60 * 2}px`, height: "100%", borderLeft: "1px dashed rgba(0,0,0,0.1)", pointerEvents: "none" }} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+            )}
 
               <div className="gantt-total">
                 <span>Durée totale optimisée du cycle de production</span>

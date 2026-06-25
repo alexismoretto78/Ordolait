@@ -1431,6 +1431,7 @@ body {
 
 .cf-card-maturation {
   animation: cf-pulse-maturation 3s infinite;
+  background-color: rgba(34, 197, 94, 0.15) !important;
 }
 
 .cf-card-soutirage {

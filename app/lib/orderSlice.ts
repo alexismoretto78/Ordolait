@@ -399,7 +399,7 @@ export const getTLCStats = (batches: Batch[]) => {
   return { volume, protein: Number(protein.toFixed(3)), fat: Number(fat.toFixed(3)) }
 }
 
-const TLS_TANKS = [
+export const TLS_TANKS = [
   { name: "TLS1", capacity: 11000 },
   { name: "TLS2", capacity: 5200 },
   { name: "TLS3", capacity: 5200 },
@@ -413,7 +413,7 @@ export const TLC_TANKS = [
   { key: "tankPermeat", name: "Tank Perméat", capacity: 15000 },
 ] as const
 
-const CF_TANKS = [
+export const CF_TANKS = [
   { name: "CF4", capacity: 550 },
   { name: "CF5", capacity: 550 },
   { name: "CF1", capacity: 1100 },
@@ -2137,6 +2137,36 @@ const orderSlice = createSlice({
         times: { remplissageStart: new Date().toISOString() } 
       }
     },
+    initDirectTlcPasto(state, action: PayloadAction<{ cfName: string, commandId: string, tlcKey: string, volume: number, dornic?: string | number, pression?: string | number, tempPasto?: string | number }>) {
+      const { cfName, commandId, tlcKey, volume, dornic, pression, tempPasto } = action.payload
+      const cmd = state.commands.find(c => c.id === commandId)
+      
+      // Deduct from TLC
+      const batches = state.tlcBatches[tlcKey as keyof typeof state.tlcBatches]
+      if (batches) {
+        let remainingToDeduct = volume
+        batches.sort((a, b) => a.deliveryDate - b.deliveryDate)
+        for (const batch of batches) {
+          if (remainingToDeduct <= 0) break
+          const take = Math.min(batch.volume, remainingToDeduct)
+          batch.volume -= take
+          remainingToDeduct -= take
+        }
+        state.tlcBatches[tlcKey as keyof typeof state.tlcBatches] = batches.filter(b => b.volume > 0)
+      }
+
+      // Setup CF directly to remplissage
+      state.cfExecution[cfName] = { 
+        ...state.cfExecution[cfName], 
+        status: "remplissage", 
+        commandId, 
+        currentVolume: 0,
+        dornic,
+        pression,
+        tempPasto,
+        times: { remplissageStart: new Date().toISOString() } 
+      }
+    },
     validateCfMaturationStart(state, action: PayloadAction<{ cfName: string }>) {
       const { cfName } = action.payload
       const exec = state.cfExecution[cfName]
@@ -2152,11 +2182,22 @@ const orderSlice = createSlice({
         exec.times.maturationEnd = new Date().toISOString()
       }
     },
-    validateCfSoutirageStart(state, action: PayloadAction<{ cfName: string }>) {
+    validateCfSoutirageStart(state, action: PayloadAction<{ cfName: string, machine: string }>) {
       const exec = state.cfExecution[action.payload.cfName]
       if (exec) {
         exec.status = "soutirage_en_cours"
-        exec.times.soutirageStart = new Date().toISOString()
+        exec.machine = action.payload.machine
+        if (!exec.times.soutirageStart) {
+          exec.times.soutirageStart = new Date().toISOString()
+        }
+      }
+    },
+    pauseCfSoutirage(state, action: PayloadAction<{ cfName: string, remainingVolume: number }>) {
+      const exec = state.cfExecution[action.payload.cfName]
+      if (exec) {
+        exec.status = "soutirage_en_pause"
+        exec.currentVolume = action.payload.remainingVolume
+        exec.machine = undefined
       }
     },
     validateCfSoutirageEnd(state, action: PayloadAction<{ cfName: string }>) {
@@ -2808,13 +2849,14 @@ export const {
   validateCfRemplissageEnd,
   autoCompleteCfRemplissage,
   initCfRemplissage,
+  initDirectTlcPasto,
   validateCfMaturationStart,
   validateCfMaturationEnd,
   validateCfSoutirageStart,
+  pauseCfSoutirage,
   validateCfSoutirageEnd,
   validateCfLavageStart,
   validateCfLavageEnd,
 } = orderSlice.actions
 
-export { CF_TANKS, TLS_TANKS }
 export default orderSlice.reducer

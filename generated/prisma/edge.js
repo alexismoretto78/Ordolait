@@ -19,10 +19,7 @@ const {
   skip,
   Decimal,
   Debug,
-  DbNull,
-  JsonNull,
-  AnyNull,
-  NullTypes,
+  objectEnumValues,
   makeStrictEnum,
   Extensions,
   warnOnce,
@@ -30,7 +27,7 @@ const {
   Public,
   getRuntime,
   createParam,
-} = require('./runtime/wasm-compiler-edge.js')
+} = require('./runtime/edge.js')
 
 
 const Prisma = {}
@@ -39,12 +36,12 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 7.8.0
- * Query Engine version: 3c6e192761c0362d496ed980de936e2f3cebcd3a
+ * Prisma Client JS version: 6.19.3
+ * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "7.8.0",
-  engine: "3c6e192761c0362d496ed980de936e2f3cebcd3a"
+  client: "6.19.3",
+  engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
 Prisma.PrismaClientKnownRequestError = PrismaClientKnownRequestError;
@@ -72,11 +69,15 @@ Prisma.defineExtension = Extensions.defineExtension
 /**
  * Shorthand utilities for JSON filtering
  */
-Prisma.DbNull = DbNull
-Prisma.JsonNull = JsonNull
-Prisma.AnyNull = AnyNull
+Prisma.DbNull = objectEnumValues.instances.DbNull
+Prisma.JsonNull = objectEnumValues.instances.JsonNull
+Prisma.AnyNull = objectEnumValues.instances.AnyNull
 
-Prisma.NullTypes = NullTypes
+Prisma.NullTypes = {
+  DbNull: objectEnumValues.classes.DbNull,
+  JsonNull: objectEnumValues.classes.JsonNull,
+  AnyNull: objectEnumValues.classes.AnyNull
+}
 
 
 
@@ -124,9 +125,19 @@ exports.Prisma.CompletedReceptionScalarFieldEnum = {
   completedAt: 'completedAt'
 };
 
+exports.Prisma.AppStateScalarFieldEnum = {
+  id: 'id',
+  data: 'data',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
+};
+
+exports.Prisma.JsonNullValueInput = {
+  JsonNull: Prisma.JsonNull
 };
 
 exports.Prisma.QueryMode = {
@@ -134,44 +145,89 @@ exports.Prisma.QueryMode = {
   insensitive: 'insensitive'
 };
 
+exports.Prisma.JsonNullValueFilter = {
+  DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull,
+  AnyNull: Prisma.AnyNull
+};
+
 
 exports.Prisma.ModelName = {
   CompletedCommand: 'CompletedCommand',
   Reference: 'Reference',
-  CompletedReception: 'CompletedReception'
+  CompletedReception: 'CompletedReception',
+  AppState: 'AppState'
 };
 /**
  * Create the Client
  */
 const config = {
-  "previewFeatures": [
-    "driverAdapters"
-  ],
-  "clientVersion": "7.8.0",
-  "engineVersion": "3c6e192761c0362d496ed980de936e2f3cebcd3a",
-  "activeProvider": "postgresql",
-  "inlineSchema": "generator client {\n  provider        = \"prisma-client-js\"\n  output          = \"../generated/prisma\"\n  previewFeatures = [\"driverAdapters\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nmodel CompletedCommand {\n  id                 String      @id @default(cuid())\n  name               String\n  status             String\n  whiteMassKg        Float\n  milkReceivedVolume Float\n  targetValue        Float\n  osmosedVolume      Float\n  milkType           String\n  isSkyr             Boolean\n  completedAt        DateTime    @default(now())\n  references         Reference[]\n}\n\nmodel Reference {\n  id         String           @id @default(cuid())\n  commandId  String\n  command    CompletedCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)\n  name       String\n  potsQty    Int\n  gramPerPot Float\n}\n\nmodel CompletedReception {\n  id           String   @id @default(cuid())\n  lotNumber    String\n  volume       Float\n  protein      Float\n  fat          Float\n  milkType     String\n  deliveryDate DateTime\n  completedAt  DateTime @default(now())\n}\n"
-}
-
-config.runtimeDataModel = JSON.parse("{\"models\":{\"CompletedCommand\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"status\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"whiteMassKg\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"milkReceivedVolume\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"targetValue\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"osmosedVolume\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"milkType\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"isSkyr\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"completedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"references\",\"kind\":\"object\",\"type\":\"Reference\",\"relationName\":\"CompletedCommandToReference\"}],\"dbName\":null},\"Reference\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"commandId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"command\",\"kind\":\"object\",\"type\":\"CompletedCommand\",\"relationName\":\"CompletedCommandToReference\"},{\"name\":\"name\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"potsQty\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"gramPerPot\",\"kind\":\"scalar\",\"type\":\"Float\"}],\"dbName\":null},\"CompletedReception\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"lotNumber\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"volume\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"protein\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"fat\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"milkType\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"deliveryDate\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"completedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
-defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
-config.parameterizationSchema = {
-  strings: JSON.parse("[\"where\",\"orderBy\",\"cursor\",\"command\",\"references\",\"_count\",\"CompletedCommand.findUnique\",\"CompletedCommand.findUniqueOrThrow\",\"CompletedCommand.findFirst\",\"CompletedCommand.findFirstOrThrow\",\"CompletedCommand.findMany\",\"data\",\"CompletedCommand.createOne\",\"CompletedCommand.createMany\",\"CompletedCommand.createManyAndReturn\",\"CompletedCommand.updateOne\",\"CompletedCommand.updateMany\",\"CompletedCommand.updateManyAndReturn\",\"create\",\"update\",\"CompletedCommand.upsertOne\",\"CompletedCommand.deleteOne\",\"CompletedCommand.deleteMany\",\"having\",\"_avg\",\"_sum\",\"_min\",\"_max\",\"CompletedCommand.groupBy\",\"CompletedCommand.aggregate\",\"Reference.findUnique\",\"Reference.findUniqueOrThrow\",\"Reference.findFirst\",\"Reference.findFirstOrThrow\",\"Reference.findMany\",\"Reference.createOne\",\"Reference.createMany\",\"Reference.createManyAndReturn\",\"Reference.updateOne\",\"Reference.updateMany\",\"Reference.updateManyAndReturn\",\"Reference.upsertOne\",\"Reference.deleteOne\",\"Reference.deleteMany\",\"Reference.groupBy\",\"Reference.aggregate\",\"CompletedReception.findUnique\",\"CompletedReception.findUniqueOrThrow\",\"CompletedReception.findFirst\",\"CompletedReception.findFirstOrThrow\",\"CompletedReception.findMany\",\"CompletedReception.createOne\",\"CompletedReception.createMany\",\"CompletedReception.createManyAndReturn\",\"CompletedReception.updateOne\",\"CompletedReception.updateMany\",\"CompletedReception.updateManyAndReturn\",\"CompletedReception.upsertOne\",\"CompletedReception.deleteOne\",\"CompletedReception.deleteMany\",\"CompletedReception.groupBy\",\"CompletedReception.aggregate\",\"AND\",\"OR\",\"NOT\",\"id\",\"lotNumber\",\"volume\",\"protein\",\"fat\",\"milkType\",\"deliveryDate\",\"completedAt\",\"equals\",\"in\",\"notIn\",\"lt\",\"lte\",\"gt\",\"gte\",\"not\",\"contains\",\"startsWith\",\"endsWith\",\"commandId\",\"name\",\"potsQty\",\"gramPerPot\",\"status\",\"whiteMassKg\",\"milkReceivedVolume\",\"targetValue\",\"osmosedVolume\",\"isSkyr\",\"every\",\"some\",\"none\",\"is\",\"isNot\",\"connectOrCreate\",\"upsert\",\"createMany\",\"set\",\"disconnect\",\"delete\",\"connect\",\"updateMany\",\"deleteMany\",\"increment\",\"decrement\",\"multiply\",\"divide\"]"),
-  graph: "lQEgMA4EAABmACA-AABkADA_AAAJABBAAABkADBBAQAAAAFGAQBaACFIQABcACFVAQBaACFYAQBaACFZCABbACFaCABbACFbCABbACFcCABbACFdIABlACEBAAAAAQAgCQMAAGkAID4AAGcAMD8AAAMAEEAAAGcAMEEBAFoAIVQBAFoAIVUBAFoAIVYCAGgAIVcIAFsAIQEDAACPAQAgCQMAAGkAID4AAGcAMD8AAAMAEEAAAGcAMEEBAAAAAVQBAFoAIVUBAFoAIVYCAGgAIVcIAFsAIQMAAAADACABAAAEADACAAAFACABAAAAAwAgAQAAAAEAIA4EAABmACA-AABkADA_AAAJABBAAABkADBBAQBaACFGAQBaACFIQABcACFVAQBaACFYAQBaACFZCABbACFaCABbACFbCABbACFcCABbACFdIABlACEBBAAAjgEAIAMAAAAJACABAAAKADACAAABACADAAAACQAgAQAACgAwAgAAAQAgAwAAAAkAIAEAAAoAMAIAAAEAIAsEAACNAQAgQQEAAAABRgEAAAABSEAAAAABVQEAAAABWAEAAAABWQgAAAABWggAAAABWwgAAAABXAgAAAABXSAAAAABAQsAAA4AIApBAQAAAAFGAQAAAAFIQAAAAAFVAQAAAAFYAQAAAAFZCAAAAAFaCAAAAAFbCAAAAAFcCAAAAAFdIAAAAAEBCwAAEAAwAQsAABAAMAsEAACAAQAgQQEAbwAhRgEAbwAhSEAAcQAhVQEAbwAhWAEAbwAhWQgAcAAhWggAcAAhWwgAcAAhXAgAcAAhXSAAfwAhAgAAAAEAIAsAABMAIApBAQBvACFGAQBvACFIQABxACFVAQBvACFYAQBvACFZCABwACFaCABwACFbCABwACFcCABwACFdIAB_ACECAAAACQAgCwAAFQAgAgAAAAkAIAsAABUAIAMAAAABACASAAAOACATAAATACABAAAAAQAgAQAAAAkAIAUFAAB6ACAYAAB7ACAZAAB-ACAaAAB9ACAbAAB8ACANPgAAYAAwPwAAHAAQQAAAYAAwQQEATwAhRgEATwAhSEAAUQAhVQEATwAhWAEATwAhWQgAUAAhWggAUAAhWwgAUAAhXAgAUAAhXSAAYQAhAwAAAAkAIAEAABsAMBcAABwAIAMAAAAJACABAAAKADACAAABACABAAAABQAgAQAAAAUAIAMAAAADACABAAAEADACAAAFACADAAAAAwAgAQAABAAwAgAABQAgAwAAAAMAIAEAAAQAMAIAAAUAIAYDAAB5ACBBAQAAAAFUAQAAAAFVAQAAAAFWAgAAAAFXCAAAAAEBCwAAJAAgBUEBAAAAAVQBAAAAAVUBAAAAAVYCAAAAAVcIAAAAAQELAAAmADABCwAAJgAwBgMAAHgAIEEBAG8AIVQBAG8AIVUBAG8AIVYCAHcAIVcIAHAAIQIAAAAFACALAAApACAFQQEAbwAhVAEAbwAhVQEAbwAhVgIAdwAhVwgAcAAhAgAAAAMAIAsAACsAIAIAAAADACALAAArACADAAAABQAgEgAAJAAgEwAAKQAgAQAAAAUAIAEAAAADACAFBQAAcgAgGAAAcwAgGQAAdgAgGgAAdQAgGwAAdAAgCD4AAF0AMD8AADIAEEAAAF0AMEEBAE8AIVQBAE8AIVUBAE8AIVYCAF4AIVcIAFAAIQMAAAADACABAAAxADAXAAAyACADAAAAAwAgAQAABAAwAgAABQAgCz4AAFkAMD8AADgAEEAAAFkAMEEBAAAAAUIBAFoAIUMIAFsAIUQIAFsAIUUIAFsAIUYBAFoAIUdAAFwAIUhAAFwAIQEAAAA1ACABAAAANQAgCz4AAFkAMD8AADgAEEAAAFkAMEEBAFoAIUIBAFoAIUMIAFsAIUQIAFsAIUUIAFsAIUYBAFoAIUdAAFwAIUhAAFwAIQADAAAAOAAgAQAAOQAwAgAANQAgAwAAADgAIAEAADkAMAIAADUAIAMAAAA4ACABAAA5ADACAAA1ACAIQQEAAAABQgEAAAABQwgAAAABRAgAAAABRQgAAAABRgEAAAABR0AAAAABSEAAAAABAQsAAD0AIAhBAQAAAAFCAQAAAAFDCAAAAAFECAAAAAFFCAAAAAFGAQAAAAFHQAAAAAFIQAAAAAEBCwAAPwAwAQsAAD8AMAhBAQBvACFCAQBvACFDCABwACFECABwACFFCABwACFGAQBvACFHQABxACFIQABxACECAAAANQAgCwAAQgAgCEEBAG8AIUIBAG8AIUMIAHAAIUQIAHAAIUUIAHAAIUYBAG8AIUdAAHEAIUhAAHEAIQIAAAA4ACALAABEACACAAAAOAAgCwAARAAgAwAAADUAIBIAAD0AIBMAAEIAIAEAAAA1ACABAAAAOAAgBQUAAGoAIBgAAGsAIBkAAG4AIBoAAG0AIBsAAGwAIAs-AABOADA_AABLABBAAABOADBBAQBPACFCAQBPACFDCABQACFECABQACFFCABQACFGAQBPACFHQABRACFIQABRACEDAAAAOAAgAQAASgAwFwAASwAgAwAAADgAIAEAADkAMAIAADUAIAs-AABOADA_AABLABBAAABOADBBAQBPACFCAQBPACFDCABQACFECABQACFFCABQACFGAQBPACFHQABRACFIQABRACEOBQAAUwAgGgAAWAAgGwAAWAAgSQEAAAABSgEAAAAESwEAAAAETAEAAAABTQEAAAABTgEAAAABTwEAAAABUAEAVwAhUQEAAAABUgEAAAABUwEAAAABDQUAAFMAIBgAAFYAIBkAAFYAIBoAAFYAIBsAAFYAIEkIAAAAAUoIAAAABEsIAAAABEwIAAAAAU0IAAAAAU4IAAAAAU8IAAAAAVAIAFUAIQsFAABTACAaAABUACAbAABUACBJQAAAAAFKQAAAAARLQAAAAARMQAAAAAFNQAAAAAFOQAAAAAFPQAAAAAFQQABSACELBQAAUwAgGgAAVAAgGwAAVAAgSUAAAAABSkAAAAAES0AAAAAETEAAAAABTUAAAAABTkAAAAABT0AAAAABUEAAUgAhCEkCAAAAAUoCAAAABEsCAAAABEwCAAAAAU0CAAAAAU4CAAAAAU8CAAAAAVACAFMAIQhJQAAAAAFKQAAAAARLQAAAAARMQAAAAAFNQAAAAAFOQAAAAAFPQAAAAAFQQABUACENBQAAUwAgGAAAVgAgGQAAVgAgGgAAVgAgGwAAVgAgSQgAAAABSggAAAAESwgAAAAETAgAAAABTQgAAAABTggAAAABTwgAAAABUAgAVQAhCEkIAAAAAUoIAAAABEsIAAAABEwIAAAAAU0IAAAAAU4IAAAAAU8IAAAAAVAIAFYAIQ4FAABTACAaAABYACAbAABYACBJAQAAAAFKAQAAAARLAQAAAARMAQAAAAFNAQAAAAFOAQAAAAFPAQAAAAFQAQBXACFRAQAAAAFSAQAAAAFTAQAAAAELSQEAAAABSgEAAAAESwEAAAAETAEAAAABTQEAAAABTgEAAAABTwEAAAABUAEAWAAhUQEAAAABUgEAAAABUwEAAAABCz4AAFkAMD8AADgAEEAAAFkAMEEBAFoAIUIBAFoAIUMIAFsAIUQIAFsAIUUIAFsAIUYBAFoAIUdAAFwAIUhAAFwAIQtJAQAAAAFKAQAAAARLAQAAAARMAQAAAAFNAQAAAAFOAQAAAAFPAQAAAAFQAQBYACFRAQAAAAFSAQAAAAFTAQAAAAEISQgAAAABSggAAAAESwgAAAAETAgAAAABTQgAAAABTggAAAABTwgAAAABUAgAVgAhCElAAAAAAUpAAAAABEtAAAAABExAAAAAAU1AAAAAAU5AAAAAAU9AAAAAAVBAAFQAIQg-AABdADA_AAAyABBAAABdADBBAQBPACFUAQBPACFVAQBPACFWAgBeACFXCABQACENBQAAUwAgGAAAVgAgGQAAUwAgGgAAUwAgGwAAUwAgSQIAAAABSgIAAAAESwIAAAAETAIAAAABTQIAAAABTgIAAAABTwIAAAABUAIAXwAhDQUAAFMAIBgAAFYAIBkAAFMAIBoAAFMAIBsAAFMAIEkCAAAAAUoCAAAABEsCAAAABEwCAAAAAU0CAAAAAU4CAAAAAU8CAAAAAVACAF8AIQ0-AABgADA_AAAcABBAAABgADBBAQBPACFGAQBPACFIQABRACFVAQBPACFYAQBPACFZCABQACFaCABQACFbCABQACFcCABQACFdIABhACEFBQAAUwAgGgAAYwAgGwAAYwAgSSAAAAABUCAAYgAhBQUAAFMAIBoAAGMAIBsAAGMAIEkgAAAAAVAgAGIAIQJJIAAAAAFQIABjACEOBAAAZgAgPgAAZAAwPwAACQAQQAAAZAAwQQEAWgAhRgEAWgAhSEAAXAAhVQEAWgAhWAEAWgAhWQgAWwAhWggAWwAhWwgAWwAhXAgAWwAhXSAAZQAhAkkgAAAAAVAgAGMAIQNeAAADACBfAAADACBgAAADACAJAwAAaQAgPgAAZwAwPwAAAwAQQAAAZwAwQQEAWgAhVAEAWgAhVQEAWgAhVgIAaAAhVwgAWwAhCEkCAAAAAUoCAAAABEsCAAAABEwCAAAAAU0CAAAAAU4CAAAAAU8CAAAAAVACAFMAIRAEAABmACA-AABkADA_AAAJABBAAABkADBBAQBaACFGAQBaACFIQABcACFVAQBaACFYAQBaACFZCABbACFaCABbACFbCABbACFcCABbACFdIABlACFhAAAJACBiAAAJACAAAAAAAAFmAQAAAAEFZggAAAABbAgAAAABbQgAAAABbggAAAABbwgAAAABAWZAAAAAAQAAAAAABWYCAAAAAWwCAAAAAW0CAAAAAW4CAAAAAW8CAAAAAQUSAACRAQAgEwAAlAEAIGMAAJIBACBkAACTAQAgaQAAAQAgAxIAAJEBACBjAACSAQAgaQAAAQAgAAAAAAABZiAAAAABCxIAAIEBADATAACGAQAwYwAAggEAMGQAAIMBADBlAACEAQAgZgAAhQEAMGcAAIUBADBoAACFAQAwaQAAhQEAMGoAAIcBADBrAACIAQAwBEEBAAAAAVUBAAAAAVYCAAAAAVcIAAAAAQIAAAAFACASAACMAQAgAwAAAAUAIBIAAIwBACATAACLAQAgAQsAAJABADAJAwAAaQAgPgAAZwAwPwAAAwAQQAAAZwAwQQEAAAABVAEAWgAhVQEAWgAhVgIAaAAhVwgAWwAhAgAAAAUAIAsAAIsBACACAAAAiQEAIAsAAIoBACAIPgAAiAEAMD8AAIkBABBAAACIAQAwQQEAWgAhVAEAWgAhVQEAWgAhVgIAaAAhVwgAWwAhCD4AAIgBADA_AACJAQAQQAAAiAEAMEEBAFoAIVQBAFoAIVUBAFoAIVYCAGgAIVcIAFsAIQRBAQBvACFVAQBvACFWAgB3ACFXCABwACEEQQEAbwAhVQEAbwAhVgIAdwAhVwgAcAAhBEEBAAAAAVUBAAAAAVYCAAAAAVcIAAAAAQQSAACBAQAwYwAAggEAMGUAAIQBACBpAACFAQAwAAEEAACOAQAgBEEBAAAAAVUBAAAAAVYCAAAAAVcIAAAAAQpBAQAAAAFGAQAAAAFIQAAAAAFVAQAAAAFYAQAAAAFZCAAAAAFaCAAAAAFbCAAAAAFcCAAAAAFdIAAAAAECAAAAAQAgEgAAkQEAIAMAAAAJACASAACRAQAgEwAAlQEAIAwAAAAJACALAACVAQAgQQEAbwAhRgEAbwAhSEAAcQAhVQEAbwAhWAEAbwAhWQgAcAAhWggAcAAhWwgAcAAhXAgAcAAhXSAAfwAhCkEBAG8AIUYBAG8AIUhAAHEAIVUBAG8AIVgBAG8AIVkIAHAAIVoIAHAAIVsIAHAAIVwIAHAAIV0gAH8AIQIEBgIFAAMBAwABAQQHAAAAAAUFAAgYAAkZAAoaAAsbAAwAAAAAAAUFAAgYAAkZAAoaAAsbAAwBAwABAQMAAQUFABEYABIZABMaABQbABUAAAAAAAUFABEYABIZABMaABQbABUAAAAFBQAbGAAcGQAdGgAeGwAfAAAAAAAFBQAbGAAcGQAdGgAeGwAfBgIBBwgBCAsBCQwBCg0BDA8BDREEDhIFDxQBEBYEERcGFBgBFRkBFhoEHB0HHR4NHh8CHyACICECISICIiMCIyUCJCcEJSgOJioCJywEKC0PKS4CKi8CKzAELDMQLTQWLjYXLzcXMDoXMTsXMjwXMz4XNEAENUEYNkMXN0UEOEYZOUcXOkgXO0kEPEwaPU0g"
-}
-config.compilerWasm = {
-  getRuntime: async () => require('./query_compiler_fast_bg.js'),
-  getQueryCompilerWasmModule: async () => {
-    const loader = (await import('#wasm-compiler-loader')).default
-    const compiler = (await loader).default
-    return compiler
+  "generator": {
+    "name": "client",
+    "provider": {
+      "fromEnvVar": null,
+      "value": "prisma-client-js"
+    },
+    "output": {
+      "value": "C:\\Users\\Alexis\\Ordolait\\generated\\prisma",
+      "fromEnvVar": null
+    },
+    "config": {
+      "engineType": "library"
+    },
+    "binaryTargets": [
+      {
+        "fromEnvVar": null,
+        "value": "windows",
+        "native": true
+      }
+    ],
+    "previewFeatures": [],
+    "sourceFilePath": "C:\\Users\\Alexis\\Ordolait\\prisma\\schema.prisma",
+    "isCustomOutput": true
   },
-  importName: './query_compiler_fast_bg.js',
+  "relativeEnvPaths": {
+    "rootEnvPath": null,
+    "schemaEnvPath": "../../.env"
+  },
+  "relativePath": "../../prisma",
+  "clientVersion": "6.19.3",
+  "engineVersion": "c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
+  "datasourceNames": [
+    "db"
+  ],
+  "activeProvider": "postgresql",
+  "postinstall": false,
+  "inlineDatasources": {
+    "db": {
+      "url": {
+        "fromEnvVar": "DATABASE_URL",
+        "value": null
+      }
+    }
+  },
+  "inlineSchema": "generator client {\n  provider = \"prisma-client-js\"\n  output   = \"../generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel CompletedCommand {\n  id                 String      @id @default(cuid())\n  name               String\n  status             String\n  whiteMassKg        Float\n  milkReceivedVolume Float\n  targetValue        Float\n  osmosedVolume      Float\n  milkType           String\n  isSkyr             Boolean\n  completedAt        DateTime    @default(now())\n  references         Reference[]\n}\n\nmodel Reference {\n  id         String           @id @default(cuid())\n  commandId  String\n  command    CompletedCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)\n  name       String\n  potsQty    Int\n  gramPerPot Float\n}\n\nmodel CompletedReception {\n  id           String   @id @default(cuid())\n  lotNumber    String\n  volume       Float\n  protein      Float\n  fat          Float\n  milkType     String\n  deliveryDate DateTime\n  completedAt  DateTime @default(now())\n}\n\nmodel AppState {\n  id        String   @id @default(\"singleton\")\n  data      Json\n  updatedAt DateTime @updatedAt\n}\n",
+  "inlineSchemaHash": "1eb7179e9a8ee051f818ba5cc84a8a5dd99bf12b142508b90a9ea53199b1f20b",
+  "copyEngine": true
 }
-if (typeof globalThis !== 'undefined' && globalThis['DEBUG'] || (typeof process !== 'undefined' && process.env && process.env.DEBUG) || undefined) {
-  Debug.enable(typeof globalThis !== 'undefined' && globalThis['DEBUG'] || (typeof process !== 'undefined' && process.env && process.env.DEBUG) || undefined)
+config.dirname = '/'
+
+config.runtimeDataModel = JSON.parse("{\"models\":{\"CompletedCommand\":{\"dbName\":null,\"schema\":null,\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":true,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"String\",\"nativeType\":null,\"default\":{\"name\":\"cuid\",\"args\":[1]},\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"name\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"status\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"whiteMassKg\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"milkReceivedVolume\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"targetValue\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"osmosedVolume\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"milkType\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"isSkyr\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Boolean\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"completedAt\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"DateTime\",\"nativeType\":null,\"default\":{\"name\":\"now\",\"args\":[]},\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"references\",\"kind\":\"object\",\"isList\":true,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Reference\",\"nativeType\":null,\"relationName\":\"CompletedCommandToReference\",\"relationFromFields\":[],\"relationToFields\":[],\"isGenerated\":false,\"isUpdatedAt\":false}],\"primaryKey\":null,\"uniqueFields\":[],\"uniqueIndexes\":[],\"isGenerated\":false},\"Reference\":{\"dbName\":null,\"schema\":null,\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":true,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"String\",\"nativeType\":null,\"default\":{\"name\":\"cuid\",\"args\":[1]},\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"commandId\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":true,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"command\",\"kind\":\"object\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"CompletedCommand\",\"nativeType\":null,\"relationName\":\"CompletedCommandToReference\",\"relationFromFields\":[\"commandId\"],\"relationToFields\":[\"id\"],\"relationOnDelete\":\"Cascade\",\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"name\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"potsQty\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Int\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"gramPerPot\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false}],\"primaryKey\":null,\"uniqueFields\":[],\"uniqueIndexes\":[],\"isGenerated\":false},\"CompletedReception\":{\"dbName\":null,\"schema\":null,\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":true,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"String\",\"nativeType\":null,\"default\":{\"name\":\"cuid\",\"args\":[1]},\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"lotNumber\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"volume\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"protein\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"fat\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Float\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"milkType\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"String\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"deliveryDate\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"DateTime\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"completedAt\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"DateTime\",\"nativeType\":null,\"default\":{\"name\":\"now\",\"args\":[]},\"isGenerated\":false,\"isUpdatedAt\":false}],\"primaryKey\":null,\"uniqueFields\":[],\"uniqueIndexes\":[],\"isGenerated\":false},\"AppState\":{\"dbName\":null,\"schema\":null,\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":true,\"isReadOnly\":false,\"hasDefaultValue\":true,\"type\":\"String\",\"nativeType\":null,\"default\":\"singleton\",\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"data\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"Json\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":false},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"isList\":false,\"isRequired\":true,\"isUnique\":false,\"isId\":false,\"isReadOnly\":false,\"hasDefaultValue\":false,\"type\":\"DateTime\",\"nativeType\":null,\"isGenerated\":false,\"isUpdatedAt\":true}],\"primaryKey\":null,\"uniqueFields\":[],\"uniqueIndexes\":[],\"isGenerated\":false}},\"enums\":{},\"types\":{}}")
+defineDmmfProperty(exports.Prisma, config.runtimeDataModel)
+config.engineWasm = undefined
+config.compilerWasm = undefined
+
+config.injectableEdgeEnv = () => ({
+  parsed: {
+    DATABASE_URL: typeof globalThis !== 'undefined' && globalThis['DATABASE_URL'] || typeof process !== 'undefined' && process.env && process.env.DATABASE_URL || undefined
+  }
+})
+
+if (typeof globalThis !== 'undefined' && globalThis['DEBUG'] || typeof process !== 'undefined' && process.env && process.env.DEBUG || undefined) {
+  Debug.enable(typeof globalThis !== 'undefined' && globalThis['DEBUG'] || typeof process !== 'undefined' && process.env && process.env.DEBUG || undefined)
 }
 
 const PrismaClient = getPrismaClient(config)
 exports.PrismaClient = PrismaClient
 Object.assign(exports, Prisma)
+

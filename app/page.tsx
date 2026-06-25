@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSelector, useDispatch } from "react-redux"
-import { RootState } from "./lib/store"
+import { RootState, syncStateFromDB } from "./lib/store"
 import { setActiveCommand, completeSimulation } from "./lib/orderSlice"
 import TLC from "./components/tlc"
 import Commande from "./components/commande"
@@ -13,12 +13,14 @@ import Historique from "./components/historique"
 
 export default function Home() {
   const dispatch = useDispatch()
-  const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash } = useSelector((state: RootState) => state.order)
+  const { commands, activeCommandId, tlcBatches, needs48hWash, needsC3Wash, simulationDone } = useSelector((state: RootState) => state.order)
   const [activeTab, setActiveTab] = useState<"tableau_de_bord" | "commandes" | "reception" | "planning" | "ordo" | "historique">("tableau_de_bord")
 
   useEffect(() => {
-    dispatch(completeSimulation())
-  }, [commands, tlcBatches, needs48hWash, needsC3Wash, dispatch])
+    if (!simulationDone) {
+      dispatch(completeSimulation())
+    }
+  }, [simulationDone, dispatch])
 
   useEffect(() => {
     if (commands.length === 0) {
@@ -39,34 +41,46 @@ export default function Home() {
           suivez le process de concentration automatique par osmose et pilotez vos lignes de conditionnement.
         </p>
 
-        {/* Global Active Command Selector directly in Header */}
-        {commands.length > 0 && (
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 20, backgroundColor: "var(--primary-light)", padding: "10px 20px", borderRadius: "var(--radius-md)", border: "1px dashed var(--primary-border)", maxWidth: "500px", margin: "20px auto 0 auto" }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>
-              Commande active :
-            </span>
-            <select
-              value={activeCommandId}
-              onChange={(e) => dispatch(setActiveCommand(e.target.value))}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                border: "1px solid var(--primary-border)",
-                fontWeight: 700,
-                fontSize: "0.9rem",
-                color: "var(--primary)",
-                outline: "none",
-                cursor: "pointer"
-              }}
-            >
-              {commands.map((cmd) => (
-                <option key={cmd.id} value={cmd.id}>
-                  {cmd.name} ({(cmd.references.reduce((s, r) => s + r.potsQty, 0) / 1000).toFixed(0)}k pots)
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {/* Global Active Command Selector and Sync */}
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 20, backgroundColor: "var(--primary-light)", padding: "10px 20px", borderRadius: "var(--radius-md)", border: "1px dashed var(--primary-border)", maxWidth: "600px", margin: "20px auto 0 auto" }}>
+          {commands.length > 0 && (
+            <>
+              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase" }}>
+                Commande active :
+              </span>
+              <select
+                value={activeCommandId}
+                onChange={(e) => dispatch(setActiveCommand(e.target.value))}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--primary-border)",
+                  fontWeight: 700,
+                  fontSize: "0.9rem",
+                  color: "var(--primary)",
+                  outline: "none",
+                  cursor: "pointer",
+                  flex: 1
+                }}
+              >
+                {commands.map((cmd) => (
+                  <option key={cmd.id} value={cmd.id}>
+                    {cmd.name} ({(cmd.references.reduce((s, r) => s + r.potsQty, 0) / 1000).toFixed(0)}k pots)
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <button 
+            onClick={() => syncStateFromDB()} 
+            className="btn btn-secondary" 
+            style={{ padding: "6px 12px", fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px", marginLeft: commands.length > 0 ? "10px" : "0" }}
+            title="Récupérer la dernière version depuis la base de données"
+          >
+            🔄 Actualiser
+          </button>
+        </div>
       </header>
 
       {/* Premium Tab Navigation Menu */}
