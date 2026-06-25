@@ -33,15 +33,5 @@
     "tsx": "^4.22.4",
     "typescript": "^5",
     "vitest": "^4.1.8"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma"
-    ],
-    "overrides": {
-      "zeptomatch": "2.0.2"
-    }
   }
 }
