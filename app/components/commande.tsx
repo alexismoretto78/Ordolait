@@ -36,7 +36,7 @@ export default function Commande() {
   const [newCmdName, setNewCmdName] = useState("Nouvelle Commande")
   const [newCmdStartDate, setNewCmdStartDate] = useState(new Date().toISOString().slice(0, 16))
   const [newCmdEndDate, setNewCmdEndDate] = useState("")
-  const [newCmdRefs, setNewCmdRefs] = useState<{refName: string, potsQty: number, gramPerPot: number, startDate: string, destination: "both" | "atia" | "grunwald"}>([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])
+  const [newCmdRefs, setNewCmdRefs] = useState<{refName: string, potsQty: number, gramPerPot: number, startDate: string, destination: "both" | "atia" | "grunwald"}[]>([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])
 
   const [editingCmdId, setEditingCmdId] = useState<string | null>(null)
   const [editCmdName, setEditCmdName] = useState("")

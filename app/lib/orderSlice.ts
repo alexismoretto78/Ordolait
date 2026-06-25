@@ -153,7 +153,7 @@ export const milkTypeConfigs: Record<string, any> = {
 }
 
 export type TlsStatus = "vide" | "transfert_en_cours" | "attente_osmose" | "osmose_en_cours" | "attente_pasto" | "pasto_en_cours" | "remplissage_en_cours"
-export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "a_valider_remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "a_laver" | "en_lavage"
+export type CfStatus = "vide" | "attente_remplissage" | "remplissage" | "a_valider_remplissage" | "attente_maturation" | "maturation_en_cours" | "attente_soutirage" | "soutirage_en_cours" | "soutirage_en_pause" | "a_laver" | "en_lavage"
 
 export type TlsExecution = {
   commandId?: string;
@@ -179,6 +179,7 @@ export type CfExecution = {
   commandId?: string;
   status: CfStatus;
   currentVolume: number;
+  machine?: "atia" | "grunwald" | "both";
   dornic?: string | number;
   tempPasto?: string | number;
   pression?: string | number;
@@ -201,7 +202,7 @@ export type OrderState = {
   tlsVolumes: { tls1: number; tls2: number; tls3: number }
   tlcVolumes: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
   tlcRemaining: { tlc1: number; tlc2: number; tlc3: number; tlc4: number }
-  tlcMilkTypes: { tlc1: MilkType; tlc2: MilkType; tlc3: MilkType; tlc4: MilkType }
+  tlcMilkTypes: { tlc1: MilkType; tlc2: MilkType; tlc3: MilkType; tlc4: MilkType; tankPermeat?: MilkType }
   milkType: MilkType
   osmosedVolume: number
   pasteurized: boolean
@@ -265,7 +266,7 @@ const initialCommand = (id: string, name: string, overrides?: Partial<Command>):
     cfSentStatus[name] = { atia: false, grunwald: false }
   })
 
-  const finalReferences = overrides?.references || references;
+  const finalReferences: ProductReference[] = overrides?.references || [];
 
   const refDestinations: { [refId: string]: "atia" | "grunwald" | "both" } = {}
   const refSentStatus: { [refId: string]: { atia: boolean; grunwald: boolean } } = {}
@@ -2182,7 +2183,7 @@ const orderSlice = createSlice({
         exec.times.maturationEnd = new Date().toISOString()
       }
     },
-    validateCfSoutirageStart(state, action: PayloadAction<{ cfName: string, machine: string }>) {
+    validateCfSoutirageStart(state, action: PayloadAction<{ cfName: string, machine: "atia" | "grunwald" | "both" }>) {
       const exec = state.cfExecution[action.payload.cfName]
       if (exec) {
         exec.status = "soutirage_en_cours"

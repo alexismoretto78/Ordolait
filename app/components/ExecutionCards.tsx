@@ -101,7 +101,7 @@ export function ExecutionCards() {
   const [showMaturationStart, setShowMaturationStart] = useState(false);
   const [showMaturationEndCf, setShowMaturationEndCf] = useState(false);
   const [showSoutirageStart, setShowSoutirageStart] = useState(false);
-  const [soutirageMachine, setSoutirageMachine] = useState<string>("ATIA");
+  const [soutirageMachine, setSoutirageMachine] = useState<"atia" | "grunwald" | "both">("atia");
   const [showPauseSoutirage, setShowPauseSoutirage] = useState(false);
   const [remainingVolume, setRemainingVolume] = useState<number | string>("");
   const [showDirectPasto, setShowDirectPasto] = useState(false);
@@ -390,7 +390,7 @@ export function ExecutionCards() {
 
   const handleSoutirageStart = (cfName: string) => {
     setCfActiveTank(cfName);
-    setSoutirageMachine("ATIA");
+    setSoutirageMachine("atia");
     setShowSoutirageStart(true);
   }
 
@@ -406,7 +406,7 @@ export function ExecutionCards() {
     const exec = cfExecution?.[cfName];
     const cmd = commands.find(c => c.id === exec?.commandId);
     const machine = exec?.machine;
-    const speed = machine === "ATIA" ? 3500 : (machine === "GRUNWALD" ? 10000 : 0);
+    const speed = machine === "atia" ? 3500 : (machine === "grunwald" ? 10000 : 0);
     let estimatedVol = exec?.currentVolume || 0;
     
     if (exec?.times?.soutirageStart && speed > 0) {
@@ -864,9 +864,9 @@ export function ExecutionCards() {
         <BaseModal title={`Démarrer Soutirage ${cfActiveTank}`} onClose={() => setShowSoutirageStart(false)} onSubmit={submitSoutirageStart} submitText="Valider">
           <div style={{ marginBottom: "15px" }}>
             <label style={{ display: "block", marginBottom: "5px" }}>Machine de conditionnement :</label>
-            <select value={soutirageMachine} onChange={e => setSoutirageMachine(e.target.value)} style={{ width: "100%", padding: "8px" }}>
-              <option value="ATIA">ATIA</option>
-              <option value="GRUNWALD">GRUNWALD</option>
+            <select value={soutirageMachine} onChange={e => setSoutirageMachine(e.target.value as any)} style={{ width: "100%", padding: "8px" }}>
+              <option value="atia">ATIA</option>
+              <option value="grunwald">GRUNWALD</option>
             </select>
           </div>
         </BaseModal>

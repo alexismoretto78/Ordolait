@@ -126,7 +126,7 @@ export default function Historique() {
           </h2>
           
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "1.2rem", title: "Filtrer par date" }}>📅</span>
+            <span style={{ fontSize: "1.2rem" }} title="Filtrer par date">📅</span>
             <input 
               type="date" 
               value={filterDate}

@@ -11,7 +11,7 @@ import { ExecutionCards } from "./ExecutionCards"
 
 export default function Journee() {
   const dispatch = useDispatch()
-  const { commands, tlcBatches, milkOrders } = useSelector((state: RootState) => state.order)
+  const { commands, tlcBatches, milkOrders, tlcMilkTypes } = useSelector((state: RootState) => state.order)
 
   const [receptionTank, setReceptionTank] = useState<"tlc1" | "tlc2" | "tlc3" | "tlc4" | "tankPermeat" | null>(null)
   const [selectedOrderId, setSelectedOrderId] = useState("")
