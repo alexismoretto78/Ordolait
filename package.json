@@ -39,9 +39,9 @@
       "@prisma/client",
       "@prisma/engines",
       "prisma"
-    ]
-  },
-  "resolutions": {
-    "zeptomatch": "2.0.2"
+    ],
+    "overrides": {
+      "zeptomatch": "2.0.2"
+    }
   }
 }
