@@ -1,19 +1,22 @@
 "use client"
 
 import React, { useState } from "react"
-import { useSelector } from "react-redux"
+import { useSelector, useDispatch } from "react-redux"
 import { RootState } from "../lib/store"
+import { reorderCommandReferences } from "../lib/orderSlice"
 
 function getTheoTime(startMin: number, prodStart: string) {
   if (isNaN(startMin) || startMin === 999999) return "--:--"
   const d = prodStart ? new Date(prodStart) : new Date()
   d.setMinutes(d.getMinutes() + startMin)
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+  return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", " -")
 }
 
 export default function Ordo() {
   const { commands, completedCommands, simulationResults, productionStartTime } = useSelector((state: RootState) => state.order)
+  const dispatch = useDispatch()
   const [machineFilter, setMachineFilter] = useState<"ALL" | "ATIA" | "GRUNWALD">("ALL")
+  const [draggedRow, setDraggedRow] = useState<{ commandId: string, originalRefIndex: number } | null>(null)
 
   const allCommands = [...completedCommands, ...commands]
   
@@ -28,7 +31,10 @@ export default function Ordo() {
         let machineStr = dest.toUpperCase()
         if (dest === "both") machineStr = "ATIA + GRUNWALD"
         
+        const originalRefIndex = cmd.references.findIndex((r: any) => r.id === refRes.refId)
         rows.push({
+          commandId: cmd.id,
+          originalRefIndex,
           commandName: cmd.name,
           refName: refRes.name,
           machine: machineStr,
@@ -88,7 +94,34 @@ export default function Ordo() {
             </thead>
             <tbody>
               {filteredRows.map((r, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                <tr 
+                  key={i} 
+                  draggable={r.originalRefIndex !== -1}
+                  onDragStart={() => {
+                    if (r.originalRefIndex !== -1) {
+                      setDraggedRow({ commandId: r.commandId, originalRefIndex: r.originalRefIndex })
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    if (draggedRow && draggedRow.commandId === r.commandId && draggedRow.originalRefIndex !== r.originalRefIndex) {
+                      dispatch(reorderCommandReferences({
+                        id: r.commandId,
+                        fromIndex: draggedRow.originalRefIndex,
+                        toIndex: r.originalRefIndex
+                      }))
+                    }
+                    setDraggedRow(null)
+                  }}
+                  style={{ 
+                    borderBottom: "1px solid var(--border-color)", 
+                    cursor: r.originalRefIndex !== -1 ? "grab" : "default",
+                    backgroundColor: draggedRow?.commandId === r.commandId && draggedRow?.originalRefIndex === r.originalRefIndex ? "var(--bg-light)" : "transparent"
+                  }}
+                >
                   <td style={{ padding: "12px", color: "var(--text-main)" }}>{r.commandName}</td>
                   <td style={{ padding: "12px", fontWeight: "500" }}>{r.refName}</td>
                   <td style={{ padding: "12px" }}>

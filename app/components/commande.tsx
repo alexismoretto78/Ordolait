@@ -39,6 +39,7 @@ export default function Commande() {
   const [newCmdRefs, setNewCmdRefs] = useState<{refName: string, potsQty: number, gramPerPot: number, startDate: string, destination: "both" | "atia" | "grunwald"}[]>([{ refName: "BAIKO", potsQty: 20000, gramPerPot: 105, startDate: "", destination: "both" }])
 
   const [editingCmdId, setEditingCmdId] = useState<string | null>(null)
+  const [draggedRefIndex, setDraggedRefIndex] = useState<number | null>(null)
   const [editCmdName, setEditCmdName] = useState("")
   const [editCmdStartDate, setEditCmdStartDate] = useState("")
   const [editCmdEndDate, setEditCmdEndDate] = useState("")
@@ -322,7 +323,24 @@ export default function Commande() {
                         <div style={{ marginTop: "10px" }}>
                           <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem" }}>Références</h4>
                           {editCmdRefs.map((refItem, index) => (
-                            <div key={index} style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+                            <div 
+                              key={index} 
+                              draggable
+                              onDragStart={(e) => setDraggedRefIndex(index)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (draggedRefIndex !== null && draggedRefIndex !== index) {
+                                  const updated = [...editCmdRefs];
+                                  const [moved] = updated.splice(draggedRefIndex, 1);
+                                  updated.splice(index, 0, moved);
+                                  setEditCmdRefs(updated);
+                                }
+                                setDraggedRefIndex(null);
+                              }}
+                              style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: draggedRefIndex === index ? "#f1f5f9" : "#fff", border: "1px dashed #cbd5e1", borderRadius: "4px", transition: "background-color 0.2s" }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", paddingBottom: "10px", cursor: "grab", color: "#94a3b8", fontSize: "1.2rem" }} title="Glisser-déposer pour réordonner">☰</div>
                               <label style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
                                 Référence
                                 <select 
@@ -776,7 +794,24 @@ export default function Commande() {
               <div style={{ marginTop: "10px" }}>
                 <h4 style={{ margin: "0 0 10px 0" }}>Références de la commande</h4>
                 {newCmdRefs.map((refItem, index) => (
-                  <div key={index} style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+                  <div 
+                    key={index} 
+                    draggable
+                    onDragStart={(e) => setDraggedRefIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedRefIndex !== null && draggedRefIndex !== index) {
+                        const updated = [...newCmdRefs];
+                        const [moved] = updated.splice(draggedRefIndex, 1);
+                        updated.splice(index, 0, moved);
+                        setNewCmdRefs(updated);
+                      }
+                      setDraggedRefIndex(null);
+                    }}
+                    style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginBottom: "10px", padding: "10px", backgroundColor: draggedRefIndex === index ? "#f1f5f9" : "#fff", border: "1px dashed #cbd5e1", borderRadius: "4px", transition: "background-color 0.2s" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", paddingBottom: "10px", cursor: "grab", color: "#94a3b8", fontSize: "1.2rem" }} title="Glisser-déposer pour réordonner">☰</div>
                     <label style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.85rem", fontWeight: 600 }}>
                       Référence
                       <select 

@@ -1855,6 +1855,15 @@ const orderSlice = createSlice({
       }
       state.simulationDone = false
     },
+    reorderCommandReferences(state, action: PayloadAction<{ id: string; fromIndex: number; toIndex: number }>) {
+      const { id, fromIndex, toIndex } = action.payload
+      const cmd = state.commands.find(c => c.id === id)
+      if (cmd && fromIndex >= 0 && toIndex >= 0 && fromIndex < cmd.references.length && toIndex < cmd.references.length) {
+        const [moved] = cmd.references.splice(fromIndex, 1)
+        cmd.references.splice(toIndex, 0, moved)
+        state.simulationDone = false
+      }
+    },
     updateCommand(state, action: PayloadAction<{ id: string; name?: string; startDate?: string; expectedEndDate?: string; references?: { refName: string; potsQty: number; gramPerPot: number }[] }>) {
       const { id, name, startDate, expectedEndDate, references } = action.payload
       const cmd = state.commands.find(c => c.id === id)
@@ -2827,6 +2836,7 @@ export const {
   addCommand,
   updateCommandName,
   updateCommand,
+  reorderCommandReferences,
   deleteCommand,
   completeCommand,
   setActiveCommand,
