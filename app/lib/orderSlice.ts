@@ -2095,11 +2095,8 @@ const orderSlice = createSlice({
             const nextCfName = cmd.cfSequence[currentIndex + 1]
             const nextExec = state.cfExecution[nextCfName]
             if (nextExec && nextExec.status === "attente_remplissage" && cmd.lastPastoData) {
-              nextExec.status = "remplissage"
-              nextExec.dornic = cmd.lastPastoData.dornic
-              nextExec.tempPasto = cmd.lastPastoData.tempPasto
-              nextExec.pression = cmd.lastPastoData.pression
-              nextExec.times.remplissageStart = new Date().toISOString()
+              // Do nothing, the user will manually start the next CF via the UI.
+              // The next CF remains in "attente_remplissage".
             }
           } else if (currentIndex !== -1 && currentIndex + 1 === cmd.cfSequence.length) {
             // It's the last CF, empty the TLS
@@ -2126,11 +2123,8 @@ const orderSlice = createSlice({
             const nextCfName = cmd.cfSequence[currentIndex + 1]
             const nextExec = state.cfExecution[nextCfName]
             if (nextExec && nextExec.status === "attente_remplissage" && cmd.lastPastoData) {
-              nextExec.status = "remplissage"
-              nextExec.dornic = cmd.lastPastoData.dornic
-              nextExec.tempPasto = cmd.lastPastoData.tempPasto
-              nextExec.pression = cmd.lastPastoData.pression
-              nextExec.times.remplissageStart = new Date().toISOString()
+              // Do nothing, the user will manually start the next CF via the UI.
+              // The next CF remains in "attente_remplissage".
             }
           } else if (currentIndex !== -1 && currentIndex + 1 === cmd.cfSequence.length) {
             // It's the last CF, empty the TLS
@@ -2148,21 +2142,26 @@ const orderSlice = createSlice({
     // CF Execution Reducers
     initCfRemplissage(state, action: PayloadAction<{ cfName: string, commandId: string, dornic?: string | number, pression?: string | number, tempPasto?: string | number }>) {
       const { cfName, commandId, dornic, pression, tempPasto } = action.payload
+      const cmd = state.commands.find(c => c.id === commandId)
+      if (cmd && dornic !== undefined) {
+        cmd.lastPastoData = { dornic: dornic as string|number, pression: pression as string|number, tempPasto: tempPasto as string|number }
+      }
       state.cfExecution[cfName] = { 
         ...state.cfExecution[cfName], 
-        status: "remplissage", 
+        status: "attente_remplissage", 
         commandId, 
         currentVolume: 0, 
-        dornic,
-        pression,
-        tempPasto,
-        times: { remplissageStart: new Date().toISOString() } 
+        times: {} 
       }
     },
     initDirectTlcPasto(state, action: PayloadAction<{ cfName: string, commandId: string, tlcKey: string, volume: number, dornic?: string | number, pression?: string | number, tempPasto?: string | number }>) {
       const { cfName, commandId, tlcKey, volume, dornic, pression, tempPasto } = action.payload
       const cmd = state.commands.find(c => c.id === commandId)
       
+      if (cmd && dornic !== undefined) {
+        cmd.lastPastoData = { dornic: dornic as string|number, pression: pression as string|number, tempPasto: tempPasto as string|number }
+      }
+
       // Deduct from TLC
       const batches = state.tlcBatches[tlcKey as keyof typeof state.tlcBatches]
       if (batches) {
@@ -2177,16 +2176,13 @@ const orderSlice = createSlice({
         state.tlcBatches[tlcKey as keyof typeof state.tlcBatches] = batches.filter(b => b.volume > 0)
       }
 
-      // Setup CF directly to remplissage
+      // Setup CF directly to attente_remplissage
       state.cfExecution[cfName] = { 
         ...state.cfExecution[cfName], 
-        status: "remplissage", 
+        status: "attente_remplissage", 
         commandId, 
         currentVolume: 0,
-        dornic,
-        pression,
-        tempPasto,
-        times: { remplissageStart: new Date().toISOString() } 
+        times: {} 
       }
     },
     validateCfMaturationStart(state, action: PayloadAction<{ cfName: string }>) {
