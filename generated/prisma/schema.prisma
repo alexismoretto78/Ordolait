@@ -9,17 +9,17 @@ datasource db {
 }
 
 model CompletedCommand {
-  id                 String      @id @default(cuid())
-  name               String
-  status             String
-  whiteMassKg        Float
-  milkReceivedVolume Float
-  targetValue        Float
-  osmosedVolume      Float
-  milkType           String
-  isSkyr             Boolean
-  completedAt        DateTime    @default(now())
-  references         Reference[]
+  id               String      @id @default(cuid())
+  name             String
+  status           String
+  whiteMassKg      Float
+  rawMilkLotNumber String      @default("")
+  targetValue      Float
+  osmosedVolume    Float
+  milkType         String
+  isSkyr           Boolean
+  completedAt      DateTime    @default(now())
+  references       Reference[]
 }
 
 model Reference {

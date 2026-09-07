@@ -126,7 +126,7 @@ exports.Prisma.CompletedCommandScalarFieldEnum = {
   name: 'name',
   status: 'status',
   whiteMassKg: 'whiteMassKg',
-  milkReceivedVolume: 'milkReceivedVolume',
+  rawMilkLotNumber: 'rawMilkLotNumber',
   targetValue: 'targetValue',
   osmosedVolume: 'osmosedVolume',
   milkType: 'milkType',

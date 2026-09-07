@@ -11,7 +11,7 @@ export async function saveCompletedCommand(cmd: Command) {
         name: cmd.name,
         status: "Terminée",
         whiteMassKg: cmd.whiteMassKg,
-        milkReceivedVolume: cmd.milkReceivedVolume,
+        rawMilkLotNumber: cmd.consumedBatches?.map(b => b.lotNumber).filter(Boolean).join(', ') || "",
         targetValue: cmd.targetValue,
         osmosedVolume: cmd.osmosedVolume,
         milkType: cmd.milkType,

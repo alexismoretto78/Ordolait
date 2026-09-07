@@ -14,7 +14,7 @@ type CompletedCommand = {
   name: string;
   status: string;
   whiteMassKg: number;
-  milkReceivedVolume: number;
+  rawMilkLotNumber: string;
   targetValue: number;
   osmosedVolume: number;
   milkType: string;
@@ -266,7 +266,7 @@ export default function Historique() {
                             </span>
                           </td>
                           <td style={{ padding: "12px", fontSize: "0.9rem" }}>
-                            {cmd.milkReceivedVolume.toFixed(0)} L - <span style={{ textTransform: "uppercase", fontWeight: 600 }}>{cmd.milkType}</span> {cmd.isSkyr ? "(Skyr)" : ""}
+                            Lot {cmd.rawMilkLotNumber || "N/A"} - <span style={{ textTransform: "uppercase", fontWeight: 600 }}>{cmd.milkType}</span> {cmd.isSkyr ? "(Skyr)" : ""}
                           </td>
                           <td style={{ padding: "12px", fontWeight: 600 }}>
                             {cmd.whiteMassKg.toFixed(0)} kg

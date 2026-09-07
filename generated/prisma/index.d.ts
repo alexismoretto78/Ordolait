@@ -1178,14 +1178,12 @@ export namespace Prisma {
 
   export type CompletedCommandAvgAggregateOutputType = {
     whiteMassKg: number | null
-    milkReceivedVolume: number | null
     targetValue: number | null
     osmosedVolume: number | null
   }
 
   export type CompletedCommandSumAggregateOutputType = {
     whiteMassKg: number | null
-    milkReceivedVolume: number | null
     targetValue: number | null
     osmosedVolume: number | null
   }
@@ -1195,7 +1193,7 @@ export namespace Prisma {
     name: string | null
     status: string | null
     whiteMassKg: number | null
-    milkReceivedVolume: number | null
+    rawMilkLotNumber: string | null
     targetValue: number | null
     osmosedVolume: number | null
     milkType: string | null
@@ -1208,7 +1206,7 @@ export namespace Prisma {
     name: string | null
     status: string | null
     whiteMassKg: number | null
-    milkReceivedVolume: number | null
+    rawMilkLotNumber: string | null
     targetValue: number | null
     osmosedVolume: number | null
     milkType: string | null
@@ -1221,7 +1219,7 @@ export namespace Prisma {
     name: number
     status: number
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber: number
     targetValue: number
     osmosedVolume: number
     milkType: number
@@ -1233,14 +1231,12 @@ export namespace Prisma {
 
   export type CompletedCommandAvgAggregateInputType = {
     whiteMassKg?: true
-    milkReceivedVolume?: true
     targetValue?: true
     osmosedVolume?: true
   }
 
   export type CompletedCommandSumAggregateInputType = {
     whiteMassKg?: true
-    milkReceivedVolume?: true
     targetValue?: true
     osmosedVolume?: true
   }
@@ -1250,7 +1246,7 @@ export namespace Prisma {
     name?: true
     status?: true
     whiteMassKg?: true
-    milkReceivedVolume?: true
+    rawMilkLotNumber?: true
     targetValue?: true
     osmosedVolume?: true
     milkType?: true
@@ -1263,7 +1259,7 @@ export namespace Prisma {
     name?: true
     status?: true
     whiteMassKg?: true
-    milkReceivedVolume?: true
+    rawMilkLotNumber?: true
     targetValue?: true
     osmosedVolume?: true
     milkType?: true
@@ -1276,7 +1272,7 @@ export namespace Prisma {
     name?: true
     status?: true
     whiteMassKg?: true
-    milkReceivedVolume?: true
+    rawMilkLotNumber?: true
     targetValue?: true
     osmosedVolume?: true
     milkType?: true
@@ -1376,7 +1372,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -1408,7 +1404,7 @@ export namespace Prisma {
     name?: boolean
     status?: boolean
     whiteMassKg?: boolean
-    milkReceivedVolume?: boolean
+    rawMilkLotNumber?: boolean
     targetValue?: boolean
     osmosedVolume?: boolean
     milkType?: boolean
@@ -1423,7 +1419,7 @@ export namespace Prisma {
     name?: boolean
     status?: boolean
     whiteMassKg?: boolean
-    milkReceivedVolume?: boolean
+    rawMilkLotNumber?: boolean
     targetValue?: boolean
     osmosedVolume?: boolean
     milkType?: boolean
@@ -1436,7 +1432,7 @@ export namespace Prisma {
     name?: boolean
     status?: boolean
     whiteMassKg?: boolean
-    milkReceivedVolume?: boolean
+    rawMilkLotNumber?: boolean
     targetValue?: boolean
     osmosedVolume?: boolean
     milkType?: boolean
@@ -1449,7 +1445,7 @@ export namespace Prisma {
     name?: boolean
     status?: boolean
     whiteMassKg?: boolean
-    milkReceivedVolume?: boolean
+    rawMilkLotNumber?: boolean
     targetValue?: boolean
     osmosedVolume?: boolean
     milkType?: boolean
@@ -1457,7 +1453,7 @@ export namespace Prisma {
     completedAt?: boolean
   }
 
-  export type CompletedCommandOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "status" | "whiteMassKg" | "milkReceivedVolume" | "targetValue" | "osmosedVolume" | "milkType" | "isSkyr" | "completedAt", ExtArgs["result"]["completedCommand"]>
+  export type CompletedCommandOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "status" | "whiteMassKg" | "rawMilkLotNumber" | "targetValue" | "osmosedVolume" | "milkType" | "isSkyr" | "completedAt", ExtArgs["result"]["completedCommand"]>
   export type CompletedCommandInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     references?: boolean | CompletedCommand$referencesArgs<ExtArgs>
     _count?: boolean | CompletedCommandCountOutputTypeDefaultArgs<ExtArgs>
@@ -1475,7 +1471,7 @@ export namespace Prisma {
       name: string
       status: string
       whiteMassKg: number
-      milkReceivedVolume: number
+      rawMilkLotNumber: string
       targetValue: number
       osmosedVolume: number
       milkType: string
@@ -1909,7 +1905,7 @@ export namespace Prisma {
     readonly name: FieldRef<"CompletedCommand", 'String'>
     readonly status: FieldRef<"CompletedCommand", 'String'>
     readonly whiteMassKg: FieldRef<"CompletedCommand", 'Float'>
-    readonly milkReceivedVolume: FieldRef<"CompletedCommand", 'Float'>
+    readonly rawMilkLotNumber: FieldRef<"CompletedCommand", 'String'>
     readonly targetValue: FieldRef<"CompletedCommand", 'Float'>
     readonly osmosedVolume: FieldRef<"CompletedCommand", 'Float'>
     readonly milkType: FieldRef<"CompletedCommand", 'String'>
@@ -5501,7 +5497,7 @@ export namespace Prisma {
     name: 'name',
     status: 'status',
     whiteMassKg: 'whiteMassKg',
-    milkReceivedVolume: 'milkReceivedVolume',
+    rawMilkLotNumber: 'rawMilkLotNumber',
     targetValue: 'targetValue',
     osmosedVolume: 'osmosedVolume',
     milkType: 'milkType',
@@ -5671,7 +5667,7 @@ export namespace Prisma {
     name?: StringFilter<"CompletedCommand"> | string
     status?: StringFilter<"CompletedCommand"> | string
     whiteMassKg?: FloatFilter<"CompletedCommand"> | number
-    milkReceivedVolume?: FloatFilter<"CompletedCommand"> | number
+    rawMilkLotNumber?: StringFilter<"CompletedCommand"> | string
     targetValue?: FloatFilter<"CompletedCommand"> | number
     osmosedVolume?: FloatFilter<"CompletedCommand"> | number
     milkType?: StringFilter<"CompletedCommand"> | string
@@ -5685,7 +5681,7 @@ export namespace Prisma {
     name?: SortOrder
     status?: SortOrder
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
+    rawMilkLotNumber?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
     milkType?: SortOrder
@@ -5702,7 +5698,7 @@ export namespace Prisma {
     name?: StringFilter<"CompletedCommand"> | string
     status?: StringFilter<"CompletedCommand"> | string
     whiteMassKg?: FloatFilter<"CompletedCommand"> | number
-    milkReceivedVolume?: FloatFilter<"CompletedCommand"> | number
+    rawMilkLotNumber?: StringFilter<"CompletedCommand"> | string
     targetValue?: FloatFilter<"CompletedCommand"> | number
     osmosedVolume?: FloatFilter<"CompletedCommand"> | number
     milkType?: StringFilter<"CompletedCommand"> | string
@@ -5716,7 +5712,7 @@ export namespace Prisma {
     name?: SortOrder
     status?: SortOrder
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
+    rawMilkLotNumber?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
     milkType?: SortOrder
@@ -5737,7 +5733,7 @@ export namespace Prisma {
     name?: StringWithAggregatesFilter<"CompletedCommand"> | string
     status?: StringWithAggregatesFilter<"CompletedCommand"> | string
     whiteMassKg?: FloatWithAggregatesFilter<"CompletedCommand"> | number
-    milkReceivedVolume?: FloatWithAggregatesFilter<"CompletedCommand"> | number
+    rawMilkLotNumber?: StringWithAggregatesFilter<"CompletedCommand"> | string
     targetValue?: FloatWithAggregatesFilter<"CompletedCommand"> | number
     osmosedVolume?: FloatWithAggregatesFilter<"CompletedCommand"> | number
     milkType?: StringWithAggregatesFilter<"CompletedCommand"> | string
@@ -5918,7 +5914,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber?: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -5932,7 +5928,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber?: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -5946,7 +5942,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string
@@ -5960,7 +5956,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string
@@ -5974,7 +5970,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber?: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -5987,7 +5983,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string
@@ -6000,7 +5996,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string
@@ -6239,7 +6235,7 @@ export namespace Prisma {
     name?: SortOrder
     status?: SortOrder
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
+    rawMilkLotNumber?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
     milkType?: SortOrder
@@ -6249,7 +6245,6 @@ export namespace Prisma {
 
   export type CompletedCommandAvgOrderByAggregateInput = {
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
   }
@@ -6259,7 +6254,7 @@ export namespace Prisma {
     name?: SortOrder
     status?: SortOrder
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
+    rawMilkLotNumber?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
     milkType?: SortOrder
@@ -6272,7 +6267,7 @@ export namespace Prisma {
     name?: SortOrder
     status?: SortOrder
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
+    rawMilkLotNumber?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
     milkType?: SortOrder
@@ -6282,7 +6277,6 @@ export namespace Prisma {
 
   export type CompletedCommandSumOrderByAggregateInput = {
     whiteMassKg?: SortOrder
-    milkReceivedVolume?: SortOrder
     targetValue?: SortOrder
     osmosedVolume?: SortOrder
   }
@@ -6805,7 +6799,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber?: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -6818,7 +6812,7 @@ export namespace Prisma {
     name: string
     status: string
     whiteMassKg: number
-    milkReceivedVolume: number
+    rawMilkLotNumber?: string
     targetValue: number
     osmosedVolume: number
     milkType: string
@@ -6847,7 +6841,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string
@@ -6860,7 +6854,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     status?: StringFieldUpdateOperationsInput | string
     whiteMassKg?: FloatFieldUpdateOperationsInput | number
-    milkReceivedVolume?: FloatFieldUpdateOperationsInput | number
+    rawMilkLotNumber?: StringFieldUpdateOperationsInput | string
     targetValue?: FloatFieldUpdateOperationsInput | number
     osmosedVolume?: FloatFieldUpdateOperationsInput | number
     milkType?: StringFieldUpdateOperationsInput | string

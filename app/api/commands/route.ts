@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         name: data.name,
         status: data.status,
         whiteMassKg: data.whiteMassKg,
-        milkReceivedVolume: data.milkReceivedVolume,
+        rawMilkLotNumber: data.rawMilkLotNumber || "",
         targetValue: data.targetValue,
         osmosedVolume: data.osmosedVolume,
         milkType: data.milkType,
