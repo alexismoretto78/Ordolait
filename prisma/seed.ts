@@ -17,7 +17,6 @@ async function main() {
       name: 'Test Command',
       status: 'Terminée',
       whiteMassKg: 1000,
-      milkReceivedVolume: 1200,
       targetValue: 3.4,
       osmosedVolume: 0,
       milkType: 'bio',
